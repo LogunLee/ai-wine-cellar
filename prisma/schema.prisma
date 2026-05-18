@@ -35,6 +35,12 @@ enum NoteType {
   OTHER
 }
 
+enum CellarMembershipRole {
+  OWNER
+  EDITOR
+  VIEWER
+}
+
 model User {
   id            String   @id @default(uuid()) @db.Uuid
   email         String   @unique
@@ -46,11 +52,11 @@ model User {
   updatedAt DateTime  @updatedAt @map("updated_at")
   deletedAt DateTime? @map("deleted_at")
 
-  credential     UserCredential?
-  oauthIdentities OAuthIdentity[]
-  refreshTokens  RefreshToken[]
-  cellarItems    CellarItem[]
-  notes          Note[]
+  credential        UserCredential?
+  oauthIdentities   OAuthIdentity[]
+  refreshTokens     RefreshToken[]
+  wineCellars       WineCellar[]
+  invitedMemberships CellarMembership[]   @relation("CellarMembershipInvitee")
 
   @@map("user")
 }
@@ -98,6 +104,39 @@ model RefreshToken {
 
   @@index([userId, expiresAt])
   @@map("refresh_token")
+}
+
+model WineCellar {
+  id        String   @id @default(uuid()) @db.Uuid
+  ownerId   String   @db.Uuid @map("owner_id")
+  name      String
+
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  owner       User               @relation(fields: [ownerId], references: [id], onDelete: Cascade)
+  memberships CellarMembership[]
+  items       CellarItem[]
+  notes       Note[]
+
+  @@index([ownerId])
+  @@map("wine_cellar")
+}
+
+model CellarMembership {
+  id         String             @id @default(uuid()) @db.Uuid
+  cellarId   String             @db.Uuid @map("cellar_id")
+  userId     String             @db.Uuid @map("user_id")
+  role       CellarMembershipRole
+  invitedAt  DateTime           @default(now()) @map("invited_at")
+  acceptedAt DateTime?          @map("accepted_at")
+
+  cellar WineCellar @relation(fields: [cellarId], references: [id], onDelete: Cascade)
+  user   User       @relation("CellarMembershipInvitee", fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([cellarId, userId])
+  @@index([userId])
+  @@map("cellar_membership")
 }
 
 model Country {
@@ -169,7 +208,7 @@ model WineVintage {
   id        String  @id @default(uuid()) @db.Uuid
   seriesId  String  @db.Uuid @map("series_id")
 
-  vintageYear Int?  @map("vintage_year") // null = NV/unknown
+  vintageYear Int?  @map("vintage_year")
   alcoholAbv  Decimal? @db.Decimal(4, 2) @map("alcohol_abv")
   volumeMl    Int?  @map("volume_ml")
 
@@ -188,7 +227,7 @@ model WineVintage {
 
 model CellarItem {
   id            String  @id @default(uuid()) @db.Uuid
-  ownerId       String  @db.Uuid @map("owner_id")
+  cellarId      String  @db.Uuid @map("cellar_id")
   wineVintageId String  @db.Uuid @map("wine_vintage_id")
 
   quantity Int            @default(1)
@@ -206,20 +245,20 @@ model CellarItem {
   updatedAt DateTime  @updatedAt @map("updated_at")
   deletedAt DateTime? @map("deleted_at")
 
-  owner      User       @relation(fields: [ownerId], references: [id], onDelete: Cascade)
+  cellar      WineCellar  @relation(fields: [cellarId], references: [id], onDelete: Cascade)
   wineVintage WineVintage @relation(fields: [wineVintageId], references: [id])
-  notes      Note[]
+  notes       Note[]
 
-  @@index([ownerId, createdAt])
-  @@index([ownerId, status])
-  @@index([ownerId, wineVintageId])
+  @@index([cellarId, createdAt])
+  @@index([cellarId, status])
+  @@index([cellarId, wineVintageId])
   @@map("cellar_item")
 }
 
 model Note {
-  id          String   @id @default(uuid()) @db.Uuid
-  ownerId     String   @db.Uuid @map("owner_id")
-  cellarItemId String  @db.Uuid @map("cellar_item_id")
+  id           String   @id @default(uuid()) @db.Uuid
+  cellarId     String   @db.Uuid @map("cellar_id")
+  cellarItemId String   @db.Uuid @map("cellar_item_id")
 
   noteType NoteType @map("note_type")
   title    String?
@@ -232,10 +271,10 @@ model Note {
   updatedAt DateTime  @updatedAt @map("updated_at")
   deletedAt DateTime? @map("deleted_at")
 
-  owner     User      @relation(fields: [ownerId], references: [id], onDelete: Cascade)
+  cellar     WineCellar @relation(fields: [cellarId], references: [id], onDelete: Cascade)
   cellarItem CellarItem @relation(fields: [cellarItemId], references: [id], onDelete: Cascade)
 
-  @@index([ownerId, cellarItemId, createdAt])
-  @@index([ownerId, noteType])
+  @@index([cellarId, cellarItemId, createdAt])
+  @@index([cellarId, noteType])
   @@map("note")
 }
