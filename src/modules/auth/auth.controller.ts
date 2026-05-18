@@ -19,6 +19,20 @@ export class AuthController {
     private readonly configService: ConfigService,
   ) {}
 
+  @Post('register')
+  async register(@Body() body: { email: string; password: string; displayName?: string }) {
+    const user = await this.authService.register(body.email, body.password, body.displayName)
+    const tokens = await this.authService.generateTokens(user.id)
+    return { ...tokens, user: this.sanitizeUser(user) }
+  }
+
+  @Post('login')
+  async login(@Body() body: { email: string; password: string }) {
+    const user = await this.authService.login(body.email, body.password)
+    const tokens = await this.authService.generateTokens(user.id)
+    return { ...tokens, user: this.sanitizeUser(user) }
+  }
+
   @Get('google')
   @UseGuards(AuthGuard('google'))
   googleLogin() {}
@@ -56,5 +70,19 @@ export class AuthController {
   async me(@Req() req: Request) {
     const user = req.user as { userId: string }
     return this.authService.getMe(user.userId)
+  }
+
+  private sanitizeUser(user: {
+    id: string
+    email: string
+    login?: string | null
+    displayName?: string | null
+  }) {
+    return {
+      id: user.id,
+      email: user.email,
+      login: user.login,
+      displayName: user.displayName,
+    }
   }
 }

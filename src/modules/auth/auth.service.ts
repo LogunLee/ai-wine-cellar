@@ -1,7 +1,8 @@
-import { Injectable } from '@nestjs/common'
+import { Injectable, UnauthorizedException, ConflictException } from '@nestjs/common'
 import { JwtService } from '@nestjs/jwt'
 import { PrismaClient } from '@prisma/client'
 import { createHash, randomUUID } from 'crypto'
+import * as bcrypt from 'bcrypt'
 
 @Injectable()
 export class AuthService {
@@ -9,6 +10,52 @@ export class AuthService {
     private readonly prisma: PrismaClient,
     private readonly jwtService: JwtService,
   ) {}
+
+  async register(email: string, password: string, displayName?: string) {
+    const existing = await this.prisma.user.findUnique({ where: { email } })
+    if (existing) {
+      throw new ConflictException('User with this email already exists')
+    }
+
+    const passwordHash = await bcrypt.hash(password, 12)
+
+    const user = await this.prisma.user.create({
+      data: {
+        email,
+        displayName,
+        credential: {
+          create: {
+            passwordHash,
+          },
+        },
+        wineCellars: {
+          create: {
+            name: 'Мой погреб',
+          },
+        },
+      },
+    })
+
+    return user
+  }
+
+  async login(email: string, password: string) {
+    const user = await this.prisma.user.findUnique({
+      where: { email },
+      include: { credential: true },
+    })
+
+    if (!user?.credential) {
+      throw new UnauthorizedException('Invalid email or password')
+    }
+
+    const isValid = await bcrypt.compare(password, user.credential.passwordHash)
+    if (!isValid) {
+      throw new UnauthorizedException('Invalid email or password')
+    }
+
+    return user
+  }
 
   async validateGoogleUser(profile: {
     id: string
