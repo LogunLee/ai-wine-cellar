@@ -47,6 +47,7 @@ model User {
   emailVerified Boolean  @default(false) @map("email_verified")
   login         String?  @unique
   displayName   String?  @map("display_name")
+  avatarPath    String?  @map("avatar_path")
 
   createdAt DateTime  @default(now()) @map("created_at")
   updatedAt DateTime  @updatedAt @map("updated_at")

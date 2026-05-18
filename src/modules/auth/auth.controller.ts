@@ -77,12 +77,14 @@ export class AuthController {
     email: string
     login?: string | null
     displayName?: string | null
+    avatarPath?: string | null
   }) {
     return {
       id: user.id,
       email: user.email,
       login: user.login,
       displayName: user.displayName,
+      avatarPath: user.avatarPath,
     }
   }
 }
