@@ -1,0 +1,12 @@
+{
+  "ignore": [
+    "dist/**",
+    "node_modules/**",
+    "*.log",
+    "temp/**",
+    "uploads/**",
+    ".env"
+  ],
+  "watch": ["src"],
+  "ext": "ts"
+}

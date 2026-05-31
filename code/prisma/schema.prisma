@@ -1,0 +1,428 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+model AiModel {
+  id           String         @id @default(uuid()) @db.Uuid
+  name         String
+  provider     String
+  purpose      AiModelPurpose
+  apiKey       String         @map("api_key")
+  baseUrl      String?        @map("base_url")
+  promptConfig Json?          @map("prompt_config")
+  isDefault    Boolean        @default(false) @map("is_default")
+  isActive     Boolean        @default(true) @map("is_active")
+  createdAt    DateTime       @default(now()) @map("created_at")
+  updatedAt    DateTime       @updatedAt @map("updated_at")
+
+  @@index([purpose, isDefault])
+  @@map("ai_model")
+}
+
+model User {
+  id                 String             @id @default(uuid()) @db.Uuid
+  email              String             @unique
+  emailVerified      Boolean            @default(false) @map("email_verified")
+  login              String?            @unique
+  displayName        String?            @map("display_name")
+  createdAt          DateTime           @default(now()) @map("created_at")
+  updatedAt          DateTime           @updatedAt @map("updated_at")
+  deletedAt          DateTime?          @map("deleted_at")
+  avatarPath         String?            @map("avatar_path")
+  invitedMemberships CellarMembership[] @relation("CellarMembershipInvitee")
+  oauthIdentities    OAuthIdentity[]
+  refreshTokens      RefreshToken[]
+  credential         UserCredential?
+  wineCellars        WineCellar[]
+
+  @@map("user")
+}
+
+model UserCredential {
+  userId            String   @id @map("user_id") @db.Uuid
+  passwordHash      String   @map("password_hash")
+  passwordUpdatedAt DateTime @default(now()) @map("password_updated_at")
+  user              User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@map("user_credential")
+}
+
+model OAuthIdentity {
+  id             String        @id @default(uuid()) @db.Uuid
+  userId         String        @map("user_id") @db.Uuid
+  provider       OAuthProvider
+  providerUserId String        @map("provider_user_id")
+  providerEmail  String?       @map("provider_email")
+  createdAt      DateTime      @default(now()) @map("created_at")
+  user           User          @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([provider, providerUserId])
+  @@index([userId])
+  @@map("oauth_identity")
+}
+
+model RefreshToken {
+  id        String    @id @default(uuid()) @db.Uuid
+  userId    String    @map("user_id") @db.Uuid
+  tokenHash String    @map("token_hash")
+  expiresAt DateTime  @map("expires_at")
+  revokedAt DateTime? @map("revoked_at")
+  userAgent String?   @map("user_agent")
+  ip        String?
+  createdAt DateTime  @default(now()) @map("created_at")
+  user      User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, expiresAt])
+  @@map("refresh_token")
+}
+
+model WineCellar {
+  id          String             @id @default(uuid()) @db.Uuid
+  ownerId     String             @map("owner_id") @db.Uuid
+  name        String
+  createdAt   DateTime           @default(now()) @map("created_at")
+  updatedAt   DateTime           @updatedAt @map("updated_at")
+  items       CellarItem[]
+  memberships CellarMembership[]
+  notes       Note[]
+  owner       User               @relation(fields: [ownerId], references: [id], onDelete: Cascade)
+
+  @@index([ownerId])
+  @@map("wine_cellar")
+}
+
+model CellarMembership {
+  id         String               @id @default(uuid()) @db.Uuid
+  cellarId   String               @map("cellar_id") @db.Uuid
+  userId     String               @map("user_id") @db.Uuid
+  role       CellarMembershipRole
+  invitedAt  DateTime             @default(now()) @map("invited_at")
+  acceptedAt DateTime?            @map("accepted_at")
+  cellar     WineCellar           @relation(fields: [cellarId], references: [id], onDelete: Cascade)
+  user       User                 @relation("CellarMembershipInvitee", fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([cellarId, userId])
+  @@index([userId])
+  @@map("cellar_membership")
+}
+
+model Country {
+  id         String       @id @default(uuid()) @db.Uuid
+  iso2       String       @unique @db.Char(2)
+  iso3       String?      @unique @db.Char(3)
+  name       String
+  createdAt  DateTime     @default(now()) @map("created_at")
+  updatedAt  DateTime     @updatedAt @map("updated_at")
+  wineSeries WineSeries[]
+
+  @@map("country")
+}
+
+model GrapeVariety {
+  id           String             @id @default(uuid()) @db.Uuid
+  name         String             @unique
+  createdAt    DateTime           @default(now()) @map("created_at")
+  updatedAt    DateTime           @updatedAt @map("updated_at")
+  nameMappings GrapeNameMapping[]
+
+  @@map("grape_variety")
+}
+
+model GrapeNameMapping {
+  id                  String       @id @default(uuid()) @db.Uuid
+  grapeId             String       @map("grape_id") @db.Uuid
+  inputText           String       @map("input_text")
+  inputTextNormalized String       @unique @map("input_text_normalized")
+  locale              String?
+  source              String?
+  createdAt           DateTime     @default(now()) @map("created_at")
+  grape               GrapeVariety @relation(fields: [grapeId], references: [id], onDelete: Cascade)
+
+  @@index([grapeId])
+  @@map("grape_name_mapping")
+}
+
+model WineSeries {
+  id          String        @id @default(uuid()) @db.Uuid
+  producer    String
+  name        String
+  countryId   String        @map("country_id") @db.Uuid
+  region      String?
+  appellation String?
+  wineType    WineType      @map("wine_type")
+  createdAt   DateTime      @default(now()) @map("created_at")
+  updatedAt   DateTime      @updatedAt @map("updated_at")
+  country     Country       @relation(fields: [countryId], references: [id])
+  vintages    WineVintage[]
+
+  @@index([countryId])
+  @@index([wineType])
+  @@map("wine_series")
+}
+
+model WineVintage {
+  id          String       @id @default(uuid()) @db.Uuid
+  seriesId    String       @map("series_id") @db.Uuid
+  vintageYear Int?         @map("vintage_year")
+  alcoholAbv  Decimal?     @map("alcohol_abv") @db.Decimal(4, 2)
+  volumeMl    Int?         @map("volume_ml")
+  composition Json?
+  createdAt   DateTime     @default(now()) @map("created_at")
+  updatedAt   DateTime     @updatedAt @map("updated_at")
+  cellarItems CellarItem[]
+  series      WineSeries   @relation(fields: [seriesId], references: [id], onDelete: Cascade)
+
+  @@unique([seriesId, vintageYear])
+  @@index([seriesId])
+  @@map("wine_vintage")
+}
+
+model CellarItem {
+  id            String           @id @default(uuid()) @db.Uuid
+  wineVintageId String           @map("wine_vintage_id") @db.Uuid
+  quantity      Int              @default(1)
+  status        CellarItemStatus @default(IN_CELLAR)
+  acquiredAt    DateTime?        @map("acquired_at")
+  consumedAt    DateTime?        @map("consumed_at")
+  purchasePrice Decimal?         @map("purchase_price") @db.Decimal(10, 2)
+  currency      String?          @db.VarChar(3)
+  photoPath     String?          @map("photo_path")
+  createdAt     DateTime         @default(now()) @map("created_at")
+  updatedAt     DateTime         @updatedAt @map("updated_at")
+  deletedAt     DateTime?        @map("deleted_at")
+  cellarId      String           @map("cellar_id") @db.Uuid
+  cellar        WineCellar       @relation(fields: [cellarId], references: [id], onDelete: Cascade)
+  wineVintage   WineVintage      @relation(fields: [wineVintageId], references: [id])
+  notes         Note[]
+
+  @@index([cellarId, createdAt])
+  @@index([cellarId, status])
+  @@index([cellarId, wineVintageId])
+  @@map("cellar_item")
+}
+
+model Note {
+  id           String     @id @default(uuid()) @db.Uuid
+  cellarItemId String     @map("cellar_item_id") @db.Uuid
+  noteType     NoteType   @map("note_type")
+  title        String?
+  text         String
+  rating       Decimal?   @db.Decimal(3, 1)
+  tastedAt     DateTime?  @map("tasted_at")
+  createdAt    DateTime   @default(now()) @map("created_at")
+  updatedAt    DateTime   @updatedAt @map("updated_at")
+  deletedAt    DateTime?  @map("deleted_at")
+  cellarId     String     @map("cellar_id") @db.Uuid
+  cellar       WineCellar @relation(fields: [cellarId], references: [id], onDelete: Cascade)
+  cellarItem   CellarItem @relation(fields: [cellarItemId], references: [id], onDelete: Cascade)
+
+  @@index([cellarId, cellarItemId, createdAt])
+  @@index([cellarId, noteType])
+  @@map("note")
+}
+
+model Store {
+  id                  String          @id @default(uuid()) @db.Uuid
+  name                String
+  code                String          @unique
+  baseUrl             String          @map("base_url")
+  active              Boolean         @default(true)
+  parserType          StoreParserType @map("parser_type")
+  scrapePeriodMinutes Int             @default(60) @map("scrape_period_minutes")
+  currency            String          @default("RUB") @db.VarChar(3)
+  country             String?         @db.VarChar(2)
+  configJson          Json?           @map("config_json")
+  lastSuccessAt       DateTime?       @map("last_success_at")
+  lastErrorAt         DateTime?       @map("last_error_at")
+  lastErrorMessage    String?         @map("last_error_message")
+  deleted             Boolean         @default(false)
+  createdAt           DateTime        @default(now()) @map("created_at")
+  updatedAt           DateTime        @updatedAt @map("updated_at")
+  discountOffers      DiscountOffer[]
+  rawOffers           RawOffer[]
+  scrapeJobs          ScrapeJob[]
+
+  @@index([active, deleted])
+  @@map("store")
+}
+
+model ScrapeJob {
+  id                     String          @id @default(uuid()) @db.Uuid
+  storeId                String          @map("store_id") @db.Uuid
+  status                 ScrapeJobStatus
+  startedAt              DateTime        @map("started_at")
+  finishedAt             DateTime?       @map("finished_at")
+  foundCount             Int             @default(0) @map("found_count")
+  rawCreatedCount        Int             @default(0) @map("raw_created_count")
+  rawUpdatedCount        Int             @default(0) @map("raw_updated_count")
+  normalizedCreatedCount Int             @default(0) @map("normalized_created_count")
+  normalizedUpdatedCount Int             @default(0) @map("normalized_updated_count")
+  expiredCount           Int             @default(0) @map("expired_count")
+  errorMessage           String?         @map("error_message")
+  createdAt              DateTime        @default(now()) @map("created_at")
+  rawOffers              RawOffer[]
+  store                  Store           @relation(fields: [storeId], references: [id])
+
+  @@index([storeId, createdAt])
+  @@map("scrape_job")
+}
+
+model ScrapeCheckpoint {
+  id              String    @id @default(uuid()) @db.Uuid
+  storeId         String    @map("store_id") @db.Uuid
+  category        String    @map("category")
+  pageNum         Int       @default(1) @map("page_num")
+  lastUrl         String?   @map("last_url")
+  offersCollected Int       @default(0) @map("offers_collected")
+  heartbeatAt     DateTime  @default(now()) @map("heartbeat_at")
+  updatedAt       DateTime  @default(now()) @map("updated_at")
+  createdAt       DateTime  @default(now()) @map("created_at")
+
+  @@unique([storeId, category])
+  @@index([storeId])
+  @@map("scrape_checkpoint")
+}
+
+model RawOffer {
+  id                 String         @id @default(uuid()) @db.Uuid
+  storeId            String         @map("store_id") @db.Uuid
+  scrapeJobId        String?        @map("scrape_job_id") @db.Uuid
+  externalId         String?        @map("external_id")
+  rawTitle           String         @map("raw_title")
+  rawUrl             String         @map("raw_url")
+  rawImageUrl        String?        @map("raw_image_url")
+  rawCurrentPrice    Decimal?       @map("raw_current_price") @db.Decimal(10, 2)
+  rawOldPrice        Decimal?       @map("raw_old_price") @db.Decimal(10, 2)
+  rawDiscountPercent Int?           @map("raw_discount_percent")
+  rawAvailability    String?        @map("raw_availability")
+  rawPayloadJson     Json           @map("raw_payload_json")
+  contentHash        String         @map("content_hash")
+  collectedAt        DateTime       @default(now()) @map("collected_at")
+  createdAt          DateTime       @default(now()) @map("created_at")
+  discountOffer      DiscountOffer?
+  scrapeJob          ScrapeJob?     @relation(fields: [scrapeJobId], references: [id])
+  store              Store          @relation(fields: [storeId], references: [id])
+
+  @@unique([storeId, contentHash])
+  @@index([storeId, collectedAt])
+  @@index([scrapeJobId])
+  @@map("raw_offer")
+}
+
+model DiscountOffer {
+  id              String             @id @default(uuid()) @db.Uuid
+  storeId         String             @map("store_id") @db.Uuid
+  rawOfferId      String?            @unique @map("raw_offer_id") @db.Uuid
+  sellerName      String             @map("seller_name")
+  wineNameRaw     String             @map("wine_name_raw")
+  producer        String?
+  wineName        String?            @map("wine_name")
+  fullName        String?            @map("full_name")
+  vintage         String?
+  country         String?
+  region          String?
+  originZone      String?            @map("origin_zone")
+  wineType        String?            @map("wine_type")
+  volumeMl        Int?               @map("volume_ml")
+  currentPrice    Decimal            @map("current_price") @db.Decimal(10, 2)
+  oldPrice        Decimal?           @map("old_price") @db.Decimal(10, 2)
+  discountPercent Int?               @map("discount_percent")
+  discountAmount  Decimal?           @map("discount_amount") @db.Decimal(10, 2)
+  currency        String             @default("RUB") @db.VarChar(3)
+  url             String
+  imageUrl        String?            @map("image_url")
+  availability    String?
+  confidence      DiscountConfidence @default(medium)
+  status          DiscountStatus     @default(active)
+  firstSeenAt     DateTime           @default(now()) @map("first_seen_at")
+  lastSeenAt      DateTime           @default(now()) @map("last_seen_at")
+  lastCheckedAt   DateTime           @default(now()) @map("last_checked_at")
+  createdAt       DateTime           @default(now()) @map("created_at")
+  updatedAt       DateTime           @updatedAt @map("updated_at")
+  deleted         Boolean            @default(false)
+  rawOffer        RawOffer?          @relation(fields: [rawOfferId], references: [id])
+  store           Store              @relation(fields: [storeId], references: [id])
+
+  @@index([storeId, status, deleted])
+  @@index([status, confidence])
+  @@index([discountPercent])
+  @@index([currentPrice])
+  @@index([lastCheckedAt])
+  @@index([wineType])
+  @@index([country])
+  @@map("discount_offer")
+}
+
+enum OAuthProvider {
+  GOOGLE
+}
+
+enum WineType {
+  RED
+  WHITE
+  ROSE
+  SPARKLING
+  SWEET
+  FORTIFIED
+  OTHER
+}
+
+enum CellarItemStatus {
+  IN_CELLAR
+  CONSUMED
+  GIFTED
+  LOST
+}
+
+enum NoteType {
+  TASTING
+  AI_ANSWER
+  MANUAL
+  PURCHASE
+  OTHER
+}
+
+enum CellarMembershipRole {
+  OWNER
+  EDITOR
+  VIEWER
+}
+
+enum AiModelPurpose {
+  IMAGE_RECOGNITION
+  TEXT_PROCESSING
+  AUDIO_PROCESSING
+}
+
+enum StoreParserType {
+  api
+  html
+  playwright
+  jina_fallback
+  manual
+}
+
+enum ScrapeJobStatus {
+  running
+  success
+  partial_success
+  failed
+}
+
+enum DiscountConfidence {
+  high
+  medium
+  low
+}
+
+enum DiscountStatus {
+  active
+  out_of_stock
+  expired
+  error
+  hidden
+}

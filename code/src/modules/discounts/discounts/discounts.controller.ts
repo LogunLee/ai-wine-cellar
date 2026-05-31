@@ -1,0 +1,33 @@
+import { Controller, Get, Query, UseGuards } from '@nestjs/common'
+import { AuthGuard } from '@nestjs/passport'
+import { DiscountsService } from './discounts.service'
+import type { DiscountFilters } from './discounts.service'
+
+@Controller('discounts')
+@UseGuards(AuthGuard('jwt'))
+export class DiscountsController {
+  constructor(private readonly discountsService: DiscountsService) {}
+
+  @Get('offers')
+  async getOffers(@Query() query: Record<string, string>) {
+    const filters: DiscountFilters = {
+      page: query.page ? parseInt(query.page, 10) : undefined,
+      limit: query.limit ? parseInt(query.limit, 10) : undefined,
+      sort: query.sort,
+      storeId: query.storeId,
+      seller: query.seller,
+      country: query.country,
+      region: query.region,
+      wineType: query.wineType,
+      minDiscount: query.minDiscount ? parseInt(query.minDiscount, 10) : undefined,
+      minPrice: query.minPrice ? parseInt(query.minPrice, 10) : undefined,
+      maxPrice: query.maxPrice ? parseInt(query.maxPrice, 10) : undefined,
+      vintage: query.vintage,
+      availability: query.availability,
+      confidence: query.confidence,
+      status: query.status,
+      search: query.search,
+    }
+    return this.discountsService.getOffers(filters)
+  }
+}
