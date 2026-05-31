@@ -10,8 +10,10 @@ async function bootstrap() {
       bodyParser: false,
     })
 
+    const rawFrontendUrl = process.env.FRONTEND_URL || 'http://localhost:5173'
+    const frontendUrl = rawFrontendUrl.startsWith('http') ? rawFrontendUrl : `https://${rawFrontendUrl}`
     app.enableCors({
-      origin: ['http://localhost:5173', 'http://localhost:3000'],
+      origin: [frontendUrl, 'http://localhost:3000'],
       credentials: true,
     })
 

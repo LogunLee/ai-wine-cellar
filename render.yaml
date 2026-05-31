@@ -1,0 +1,50 @@
+services:
+  - type: web
+    name: api
+    env: node
+    region: frankfurt
+    plan: free
+    buildCommand: npm run build
+    startCommand: npm start
+    preDeployCommand: cd code && npx prisma migrate deploy
+    envVars:
+      - key: DATABASE_URL
+        fromDatabase:
+          name: wine-cellar-db
+          property: connectionString
+      - key: JWT_SECRET
+        generateValue: true
+      - key: FRONTEND_URL
+        fromService:
+          name: frontend
+          type: static_site
+          property: host
+      - key: GOOGLE_CLIENT_ID
+        sync: false
+      - key: GOOGLE_CLIENT_SECRET
+        sync: false
+      - key: GOOGLE_CALLBACK_URL
+        value: https://api.onrender.com/auth/google/callback
+      - key: OPENAI_API_KEY
+        sync: false
+      - key: JINA_API_KEY
+        sync: false
+    healthCheckPath: /
+
+  - type: static_site
+    name: frontend
+    env: node
+    region: frankfurt
+    buildCommand: cd code/frontend && npm ci && npm run build
+    publishPath: code/frontend/dist/
+    envVars:
+      - key: VITE_API_URL
+        fromService:
+          name: api
+          type: web
+          property: host
+
+databases:
+  - name: wine-cellar-db
+    databaseName: ai_wine_cellar
+    plan: free
