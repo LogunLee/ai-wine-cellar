@@ -1,0 +1,13 @@
+{
+  "name": "ai-wine-cellar",
+  "version": "1.0.0",
+  "private": true,
+  "scripts": {
+    "build": "cd code && npm ci && npm run build",
+    "start": "cd code && node dist/main",
+    "dev:all": "cd code && npm run dev:all"
+  },
+  "engines": {
+    "node": ">=20.0.0"
+  }
+}
