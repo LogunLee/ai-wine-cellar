@@ -8,6 +8,18 @@ import type { DiscountFilters } from './discounts.service'
 export class DiscountsController {
   constructor(private readonly discountsService: DiscountsService) {}
 
+  @Get('last-updated')
+  @UseGuards(AuthGuard('jwt'))
+  async getLastUpdated() {
+    return this.discountsService.getLastUpdated()
+  }
+
+  @Get('filter-options')
+  @UseGuards(AuthGuard('jwt'))
+  async getFilterOptions() {
+    return this.discountsService.getFilterOptions()
+  }
+
   @Get('offers')
   async getOffers(@Query() query: Record<string, string>) {
     const filters: DiscountFilters = {
@@ -27,6 +39,8 @@ export class DiscountsController {
       confidence: query.confidence,
       status: query.status,
       search: query.search,
+      grapes: query.grapes ? query.grapes.split(',').filter(Boolean) : undefined,
+      monosort: query.monosort === 'true',
     }
     return this.discountsService.getOffers(filters)
   }

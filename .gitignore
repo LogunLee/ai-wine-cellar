@@ -40,6 +40,10 @@ lerna-debug.log*
 .env.*
 !.env.example
 
+# Firebase service account (private key — never commit)
+*service-account*.json
+*serviceAccount*.json
+
 # temp directory
 .temp
 .tmp

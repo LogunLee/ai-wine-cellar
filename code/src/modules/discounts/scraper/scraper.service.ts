@@ -134,6 +134,7 @@ export class ScraperService implements OnModuleInit {
             await this.prisma.rawOffer.update({
               where: { id: existing.id },
               data: {
+                rawImageUrl: offer.imageUrl ?? null,
                 rawCurrentPrice: offer.currentPrice !== undefined ? offer.currentPrice : undefined,
                 rawOldPrice: offer.oldPrice !== undefined ? offer.oldPrice : undefined,
                 rawDiscountPercent: offer.discountPercent ?? null,
@@ -172,7 +173,71 @@ export class ScraperService implements OnModuleInit {
           })
         }
 
+        // Sync imageUrl to existing discount_offers that still have null imageUrl
+        await this.prisma.$executeRaw`
+          UPDATE "discount_offer" doff
+          SET "image_url" = ro."raw_image_url"
+          FROM "raw_offer" ro
+          WHERE doff."raw_offer_id" = ro."id"
+            AND doff."image_url" IS NULL
+            AND ro."raw_image_url" IS NOT NULL
+            AND ro."store_id" = ${storeId}
+        `
+
         return { created: createdCount, updated: updatedCount, normalized: newRawIds.length }
+      },
+
+      getCachedCards: async (storeId, keys) => {
+        const map = new Map<string, any>()
+        if (!keys || keys.length === 0) return map
+        const cards = await this.prisma.wineCard.findMany({
+          where: { storeId, cardKey: { in: keys } },
+        })
+        for (const c of cards) {
+          map.set(c.cardKey, {
+            grapes: c.grapes,
+            alcohol: c.alcohol,
+            appellation: c.appellation,
+            country: c.country,
+            region: c.region,
+            color: c.color,
+            description: c.description,
+            payloadJson: c.payloadJson,
+          })
+        }
+        return map
+      },
+
+      saveCard: async (storeId, card) => {
+        await this.prisma.wineCard.upsert({
+          where: { storeId_cardKey: { storeId, cardKey: card.cardKey } },
+          create: {
+            storeId,
+            cardKey: card.cardKey,
+            externalId: card.externalId,
+            url: card.url,
+            grapes: card.grapes,
+            alcohol: card.alcohol,
+            appellation: card.appellation,
+            country: card.country,
+            region: card.region,
+            color: card.color,
+            description: card.description,
+            payloadJson: card.payloadJson as any,
+          },
+          update: {
+            externalId: card.externalId,
+            url: card.url,
+            grapes: card.grapes,
+            alcohol: card.alcohol,
+            appellation: card.appellation,
+            country: card.country,
+            region: card.region,
+            color: card.color,
+            description: card.description,
+            payloadJson: card.payloadJson as any,
+          },
+        })
       },
     }
 
@@ -205,10 +270,17 @@ export class ScraperService implements OnModuleInit {
       }
 
       const result = await scraper.scrape(store, job.id, callbacks, {
-      saveCheckpoint: (category, pageNum, lastUrl, offersCollected) => {
-        this.logger.log(`Checkpoint saved: ${category} | page=${pageNum} | offers=${offersCollected}`)
-        return this.saveCheckpoint(store.id, category, pageNum, lastUrl, offersCollected)
-      },
+        saveCheckpoint: (category, pageNum, lastUrl, offersCollected) => {
+          this.logger.log(`Checkpoint saved: ${category} | page=${pageNum} | offers=${offersCollected}`)
+          return this.saveCheckpoint(store.id, category, pageNum, lastUrl, offersCollected)
+        },
+        getCheckpoint: async (category) => {
+          const cp = await this.prisma.scrapeCheckpoint.findUnique({
+            where: { storeId_category: { storeId: store.id, category } },
+          })
+          if (!cp) return null
+          return { pageNum: cp.pageNum, lastUrl: cp.lastUrl, offersCollected: cp.offersCollected }
+        },
         startHeartbeat: (category) => startHeartbeat(category),
         stopHeartbeat: (category) => stopHeartbeat(category),
       })

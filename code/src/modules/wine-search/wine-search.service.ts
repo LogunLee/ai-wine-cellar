@@ -256,6 +256,11 @@ Process each wine name separately and return all of them in the "wines" array.`
   private getDefaultImagePrompt(): string {
     return `Ты — эксперт по распознаванию вин по этикеткам. Проанализируй изображение и определи все вина, которые на нём видны.
 
+Правила:
+- country — ОБЯЗАТЕЛЬНО двухбуквенный код ISO 3166-1 alpha-2 (например: FR, IT, ES, RU, US, DE, AR, CL, AU, ZA, PT, GE, AM). Никаких полных названий стран — только код.
+- Если поле неизвестно — верни null.
+- Confidence — от 0 до 1.
+
 Верни результат в формате JSON:
 {
   "wines": [
@@ -264,13 +269,11 @@ Process each wine name separately and return all of them in the "wines" array.`
       "name": "Название вина",
       "vintageYear": 2020,
       "region": "Регион",
-      "country": "Страна (ISO2 код)",
+      "country": "FR",
       "wineType": "RED|WHITE|ROSE|SPARKLING|SWEET|FORTIFIED|OTHER",
       "confidence": 0.95
     }
   ]
-}
-
-Если не уверен в каком-то поле — оставь его null. Confidence — от 0 до 1.`
+}`
   }
 }

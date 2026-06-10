@@ -73,6 +73,11 @@ export class WineLabScraper extends BaseScraper {
 
       page = await setupPage()
 
+      // Save an initial checkpoint immediately so that resumeStalledJobs can
+      // detect a crash even if the server goes down during code collection
+      // (before any batch checkpoint is written).
+      await checkpointCallbacks?.saveCheckpoint('all', 0, null, 0)
+
       this.logger.log('Visiting homepage to establish session')
 
       await this.gotoWithServerErrorRetry(page, 'https://www.winelab.ru/', 'Homepage')
@@ -134,14 +139,23 @@ export class WineLabScraper extends BaseScraper {
         )
       }
 
-      const maxBatches = process.env.SCRAPER_MAX_PAGES
-        ? parseInt(process.env.SCRAPER_MAX_PAGES, 10)
-        : null
-
       let batchNum = 0
       let totalFetched = 0
       let totalMatchedWine = 0
       let totalAvailableOffers = 0
+
+      // Read the checkpoint saved from a previous (crashed) run.
+      // pageNum > 0 means batches 1..pageNum were already fully processed.
+      const savedCp = checkpointCallbacks
+        ? await checkpointCallbacks.getCheckpoint('all')
+        : null
+      const resumeBatchNum = savedCp && savedCp.pageNum > 0 ? savedCp.pageNum : 0
+      if (resumeBatchNum > 0) {
+        this.logger.log(
+          `WineLab: resuming from checkpoint — skipping batches 1..${resumeBatchNum} ` +
+          `(already processed in previous run, ${savedCp!.offersCollected} offers saved)`,
+        )
+      }
 
       checkpointCallbacks?.startHeartbeat('all')
       heartbeatStarted = true
@@ -149,9 +163,10 @@ export class WineLabScraper extends BaseScraper {
       for (let i = 0; i < uniqueCodes.length; i += this.batchSize) {
         batchNum++
 
-        if (maxBatches && batchNum > maxBatches) {
-          this.logger.log(`Reached max batches limit (${maxBatches}), stopping`)
-          break
+        // Skip batches that were fully processed before the crash.
+        if (batchNum <= resumeBatchNum) {
+          this.logger.log(`Batch ${batchNum}: skipping (processed in previous run)`)
+          continue
         }
 
         opsCount++
@@ -305,11 +320,16 @@ export class WineLabScraper extends BaseScraper {
               `oldPrice=${oldPrice}`,
           )
 
+          const fullUrl = `https://www.winelab.ru${p.url || '/catalog/vino/product/' + p.code + '/'}`
           batchOffers.push({
             externalId: code,
             title: name,
-            url: `https://www.winelab.ru${p.url || '/catalog/vino/product/' + p.code + '/'}`,
-            imageUrl: p.images?.[0]?.url ? `https://www.winelab.ru${p.images[0].url}` : undefined,
+            url: fullUrl,
+            imageUrl: (() => {
+            const u = p.images?.[0]?.url
+            if (!u) return undefined
+            return u.startsWith('http') ? u : `https://www.winelab.ru${u}`
+          })(),
             currentPrice,
             oldPrice,
             rawPayload: {
@@ -335,6 +355,76 @@ export class WineLabScraper extends BaseScraper {
               stock: p.stock,
             },
           })
+        }
+
+        // ── Phase 2b: characteristics (cache-aware) ──
+        // A wine's grapes/alcohol never change, so a product card is visited ONCE.
+        // On subsequent runs cached characteristics are merged into the (freshly
+        // priced) Phase-1 offer without re-visiting the page.
+        const batchKeys = batchOffers.map(o => this.cacheKey({ externalId: o.externalId, url: o.url }))
+        const batchCache = (await callbacks?.getCachedCards?.(store.id, batchKeys)) ?? new Map()
+
+        for (let j = 0; j < batchOffers.length; j++) {
+          const offer = batchOffers[j]
+          const key = this.cacheKey({ externalId: offer.externalId, url: offer.url })
+          const payload = offer.rawPayload as Record<string, any>
+          const cached = batchCache.get(key)
+
+          if (cached) {
+            payload.grapes = cached.grapes ?? []
+            if (cached.alcohol !== null) payload.alcoholContentPage = cached.alcohol
+            if (cached.appellation) payload.appellation = cached.appellation
+            if (cached.country) payload.countryPage = cached.country
+            if (cached.region) payload.regionPage = cached.region
+            if (cached.description) payload.description = cached.description
+            const cachedChars = (cached.payloadJson as any)?.characteristics
+            if (cachedChars) payload.characteristics = cachedChars
+            this.logger.log(`Phase 2b: CACHE HIT ${offer.url}`)
+            continue
+          }
+
+          try {
+            const chars = await this.scrapeProductCharacteristics(page!, offer.url)
+            // Country/region/alcohol already come from the API in Phase 1 — the card
+            // is visited for grapes + description, so cache when either is obtained.
+            const meaningful = chars.grapes.length > 0 || !!chars.description
+            if (meaningful) {
+              payload.grapes = chars.grapes
+              if (chars.alcohol !== null) payload.alcoholContentPage = chars.alcohol
+              if (chars.appellation !== null) payload.appellation = chars.appellation
+              if (chars.country) payload.countryPage = chars.country
+              if (chars.region) payload.regionPage = chars.region
+              if (chars.description) payload.description = chars.description
+              if (chars.characteristics) payload.characteristics = chars.characteristics
+              // Persist to cache so this card is never re-visited.
+              await callbacks?.saveCard?.(store.id, {
+                cardKey: key,
+                externalId: offer.externalId ?? null,
+                url: offer.url,
+                grapes: chars.grapes ?? [],
+                alcohol: chars.alcohol,
+                appellation: chars.appellation,
+                country: chars.country,
+                region: chars.region,
+                color: null,
+                description: chars.description,
+                payloadJson: {
+                  grapes: chars.grapes ?? [],
+                  alcoholContentPage: chars.alcohol,
+                  appellation: chars.appellation,
+                  countryPage: chars.country,
+                  regionPage: chars.region,
+                  description: chars.description,
+                  characteristics: chars.characteristics ?? {},
+                },
+              })
+            }
+          } catch (error) {
+            this.logger.warn(`Phase 2b: failed ${offer.url}: ${error}`)
+          }
+          if (j < batchOffers.length - 1) {
+            await randomDelay(page!, 2000, 1000)
+          }
         }
 
         offers.push(...batchOffers)
@@ -411,28 +501,54 @@ export class WineLabScraper extends BaseScraper {
     this.logger.log(`${label}: opening category ${categoryUrl}`)
 
     await this.gotoWithServerErrorRetry(page, categoryUrl, label)
-    await randomDelay(page, 2000, 1000)
+    await randomDelay(page, 4000, 2000)
     await this.closeModals(page)
 
     const codes = new Set<string>()
 
+    const maxIterations = process.env.SCRAPER_MAX_PAGES
+      ? parseInt(process.env.SCRAPER_MAX_PAGES, 10)
+      : this.maxCategoryLoadIterations
+    const maxGood = this.maxGoodPerPage()
+
     let previousSize = 0
     let consecutiveNoGrowth = 0
     let iteration = 0
+    let contextRetries = 0
+    const MAX_CONTEXT_RETRIES = 3
 
     while (true) {
       iteration++
 
-      if (iteration > this.maxCategoryLoadIterations) {
-        throw new Error(
-          `${label}: exceeded max category load iterations (${this.maxCategoryLoadIterations}). ` +
-            `Stopping to prevent infinite loop.`,
-        )
+      if (iteration > maxIterations) {
+        this.logger.log(`${label}: reached max iterations (${maxIterations}), stopping`)
+        break
       }
 
-      await this.scrollToBottom(page)
+      let availabilityState: { productCards: number; addToCartButtons: number; notifyButtons: number; allNotify: boolean }
+      let pageCodes: string[]
 
-      const availabilityState = await this.getCatalogPageAvailabilityState(page)
+      try {
+        await this.scrollToBottom(page)
+        availabilityState = await this.getCatalogPageAvailabilityState(page)
+        pageCodes = await this.extractProductCodesFromPage(page)
+      } catch (evalError) {
+        const msg = String(evalError)
+        if (
+          (msg.includes('context was destroyed') || msg.includes('Target closed')) &&
+          contextRetries < MAX_CONTEXT_RETRIES
+        ) {
+          contextRetries++
+          this.logger.warn(
+            `${label}: execution context destroyed, re-navigating (${contextRetries}/${MAX_CONTEXT_RETRIES})`,
+          )
+          await this.gotoWithServerErrorRetry(page, categoryUrl, label)
+          await randomDelay(page, 4000, 2000)
+          await this.closeModals(page)
+          continue
+        }
+        throw evalError
+      }
 
       this.logger.log(
         `${label}: availability state: ` +
@@ -450,10 +566,14 @@ export class WineLabScraper extends BaseScraper {
         break
       }
 
-      const pageCodes = await this.extractProductCodesFromPage(page)
-
       for (const code of pageCodes) {
         codes.add(code)
+      }
+
+      // Debug cap: limit codes (→ product cards) collected per category.
+      if (maxGood && codes.size >= maxGood) {
+        this.logger.log(`${label}: reached SCRAPER_MAX_GOOD_PER_PAGE (${maxGood}), stopping collection`)
+        break
       }
 
       const currentSize = codes.size
@@ -510,7 +630,8 @@ export class WineLabScraper extends BaseScraper {
       await randomDelay(page, 1000, 500)
     }
 
-    return [...codes]
+    const all = [...codes]
+    return maxGood ? all.slice(0, maxGood) : all
   }
 
   private async getCatalogPageAvailabilityState(page: Page): Promise<{
@@ -942,6 +1063,159 @@ export class WineLabScraper extends BaseScraper {
         bodyText,
       }
     })
+  }
+
+  private async scrapeProductCharacteristics(page: Page, url: string): Promise<{
+    grapes: string[]
+    alcohol: number | null
+    appellation: string | null
+    country: string | null
+    region: string | null
+    description: string | null
+    characteristics?: Record<string, string>
+  }> {
+    const empty = { grapes: [], alcohol: null, appellation: null, country: null, region: null, description: null, characteristics: {} }
+    try {
+      const response = await this.gotoWithRetry(page, url)
+
+      if (!response || response.status() >= 400) {
+        this.logger.warn(`Phase 2b: HTTP ${response?.status() ?? 'no response'} for ${url}`)
+        return empty
+      }
+
+      // winelab.ru is a heavy SPA — the characteristics block renders late, can be
+      // below the fold, and the full spec list (with grapes) may sit behind a
+      // collapsed "Характеристики" tab/accordion. Scroll, expand, then wait.
+      await page.waitForTimeout(1500)
+      try {
+        await page.evaluate(() => window.scrollTo(0, document.body.scrollHeight))
+      } catch {}
+      await page.waitForTimeout(1000)
+      // Try to expand any characteristics/specification accordion or tab.
+      try {
+        await page.evaluate(() => {
+          const wanted = /характеристик|все характеристики|подробнее|состав|показать ещё|показать еще/i
+          const clickable = Array.from(
+            document.querySelectorAll<HTMLElement>('button, a, [role="button"], [class*="tab"], [class*="accordion"], [class*="spoiler"], summary'),
+          )
+          for (const el of clickable) {
+            const t = (el.textContent || '').trim()
+            if (t && wanted.test(t) && t.length < 40) {
+              try { el.click() } catch {}
+            }
+          }
+        })
+      } catch {}
+      await page.waitForTimeout(1200)
+      try {
+        await page.waitForFunction(
+          () => /сорт|крепость|регион|виноград|содержание сахара/i.test(document.body?.innerText || ''),
+          { timeout: 5000 },
+        )
+      } catch {}
+
+      const result = await page.evaluate(() => {
+        // Universal label→value extractor — independent of CSS class names.
+        // Finds any leaf element whose text is exactly a known wine label, then
+        // takes the value from the next element sibling, or (when the value is a
+        // bare text node) from the remainder of the parent's text.
+        // NOTE: labels are matched case-INSENSITIVELY. WineLab renders the grape
+        // label as "Сорт Винограда" (capital В), which a case-sensitive match
+        // would miss. Keys in `chars` are stored lowercased.
+        const wineLabels = [
+          'Страна', 'Страна происхождения', 'Регион', 'Сорт', 'Сорта', 'Состав',
+          'Цвет', 'Крепость', 'Алкоголь', 'ABV', 'Объем', 'Объём', 'Сахар',
+          'Содержание сахара', 'Производитель', 'Изготовитель', 'Год урожая', 'Год',
+          'Аппелласьон', 'Апелласьон', 'Апелляция', 'AOC', 'Сорт винограда',
+          'Сорта винограда', 'Виноград', 'Бренд', 'Торговая марка', 'Выдержка',
+        ]
+        const wineLabelsLower = wineLabels.map((l) => l.toLowerCase())
+        const norm = (t: string) => (t || '').replace(/\s+/g, ' ').trim().replace(/:+$/, '').trim()
+        const chars: Record<string, string> = {}
+
+        const candidates = Array.from(
+          document.querySelectorAll<HTMLElement>('th, td, dt, dd, span, div, li, p, b, strong'),
+        )
+        for (const el of candidates) {
+          const label = norm(el.textContent || '')
+          const labelLower = label.toLowerCase()
+          if (!wineLabelsLower.includes(labelLower)) continue
+          if (chars[labelLower]) continue
+
+          let value = ''
+          let sib = el.nextElementSibling
+          while (sib && !value) {
+            const t = norm(sib.textContent || '')
+            if (t && t.toLowerCase() !== labelLower) value = (sib.textContent || '').trim()
+            sib = sib.nextElementSibling
+          }
+          if (!value && el.parentElement) {
+            const parentText = norm(el.parentElement.textContent || '')
+            if (parentText.toLowerCase().startsWith(labelLower) && parentText.length > label.length) {
+              value = parentText.slice(label.length).replace(/^[:\-–—\s]+/, '').trim()
+            }
+          }
+          if (value && value.length < 300) chars[labelLower] = value
+        }
+
+        // Grape varieties (keys are lowercased)
+        const grapeRaw =
+          chars['сорт винограда'] || chars['сорта винограда'] || chars['сорта'] ||
+          chars['состав'] || chars['сорт'] || chars['виноград'] || ''
+        const grapes = grapeRaw
+          .split(/[,;]/)
+          .map((g: string) => g.replace(/\s*\d+(\.\d+)?%.*$/, '').trim())
+          .filter(Boolean)
+
+        // Alcohol
+        const alcoholText = chars['крепость'] || chars['алкоголь'] || chars['abv'] || ''
+        const alcoholMatch = alcoholText.match(/([\d.]+)/)
+        const alcohol = alcoholMatch ? parseFloat(alcoholMatch[1]) : null
+
+        // Appellation
+        const appellation =
+          chars['аппелласьон'] || chars['апелласьон'] || chars['aoc'] || chars['апелляция'] || null
+
+        const country = chars['страна'] || chars['страна происхождения'] || null
+        const region = chars['регион'] || null
+
+        // Description: WineLab keeps free-text notes in tabs under #product-detail-tabs
+        // ("Описание", "Производитель", "О бренде", "Рекомендуемое употребление",
+        // "Отзывы"). Collect every tab's text EXCEPT reviews, which are user content.
+        const descParts: string[] = []
+        document.querySelectorAll<HTMLElement>('#product-detail-tabs .w-tabs__content, .js-w-tab-content').forEach((el) => {
+          const t = (el.innerText || el.textContent || '').replace(/\s+/g, ' ').trim()
+          if (!t) return
+          if (/^отзыв/i.test(t)) return // skip the reviews tab
+          if (t.length < 30) return
+          descParts.push(t)
+        })
+        // Dedup (the same content can match several selectors) and join.
+        const seen = new Set<string>()
+        const description = descParts
+          .filter((p) => (seen.has(p) ? false : (seen.add(p), true)))
+          .join('\n\n')
+          .slice(0, 4000) || null
+
+        return {
+          grapes, alcohol, appellation, country, region, description,
+          characteristics: chars,
+          _debug: { charKeys: Object.keys(chars), bodyLen: (document.body?.innerText || '').length },
+        }
+      })
+
+      if (result.grapes.length === 0) {
+        this.logger.warn(
+          `Phase 2b: no grapes for ${url} — charKeys=[${result._debug.charKeys.join(', ')}], bodyLen=${result._debug.bodyLen}`,
+        )
+      }
+
+      const { _debug, ...chars } = result
+      return chars
+    } catch (error) {
+      this.logger.warn(`Phase 2b error for ${url}: ${error}`)
+      return empty
+    }
   }
 
   private async closeModals(page: Page): Promise<void> {

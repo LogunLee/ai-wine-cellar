@@ -5,11 +5,19 @@ export interface DiscountOffer {
   sellerName: string
   producer: string | null
   wineName: string | null
+  wineNameRaw: string | null
   fullName: string | null
   vintage: string | null
   country: string | null
   region: string | null
+  regionCanonical: string | null
+  appellation: string | null
   originZone: string | null
+  sweetness: string | null
+  alcohol: number | null
+  ageingVessel: string | null
+  storagePotential: string | null
+  description: string | null
   wineType: string | null
   volumeMl: number | null
   currentPrice: number
@@ -20,6 +28,8 @@ export interface DiscountOffer {
   url: string
   imageUrl: string | null
   availability: string | null
+  grapes: string[]
+  grapeCount: number
   confidence: 'high' | 'medium' | 'low'
   status: 'active' | 'out_of_stock' | 'expired' | 'error' | 'hidden'
   lastCheckedAt: string
@@ -46,6 +56,8 @@ export interface DiscountFilters {
   confidence?: string
   status?: string
   search?: string
+  grapes?: string
+  monosort?: boolean
   page?: number
   limit?: number
   sort?: string

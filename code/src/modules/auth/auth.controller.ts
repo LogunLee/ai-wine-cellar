@@ -2,6 +2,7 @@ import {
   Controller,
   Get,
   Post,
+  Put,
   Body,
   UseGuards,
   Req,
@@ -11,12 +12,14 @@ import { AuthGuard } from '@nestjs/passport'
 import { ConfigService } from '@nestjs/config'
 import type { Request, Response } from 'express'
 import { AuthService } from './auth.service'
+import { PushService } from '../push/push.service'
 
 @Controller('auth')
 export class AuthController {
   constructor(
     private readonly authService: AuthService,
     private readonly configService: ConfigService,
+    private readonly pushService: PushService,
   ) {}
 
   @Post('register')
@@ -72,6 +75,14 @@ export class AuthController {
   async me(@Req() req: Request) {
     const user = req.user as { userId: string }
     return this.authService.getMe(user.userId)
+  }
+
+  @Put('me/fcm-token')
+  @UseGuards(AuthGuard('jwt'))
+  async registerFcmToken(@Req() req: Request, @Body() body: { token: string }) {
+    const user = req.user as { userId: string }
+    await this.pushService.registerToken(user.userId, body.token)
+    return { ok: true }
   }
 
   private sanitizeUser(user: {

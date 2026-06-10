@@ -11,9 +11,11 @@ import {
   EditRounded, SaveRounded, CancelRounded, DeleteRounded, SettingsRounded,
   Search as SearchIcon, Clear,
   ContentCopyRounded, ChatRounded, ChatOutlined, Check, Cancel,
-  PhotoCamera, CloudDownload,
+  PhotoCamera, CloudDownload, FileDownloadRounded,
 } from '@mui/icons-material'
+import * as XLSX from 'xlsx'
 import { wineCellarApi, type CellarItem } from '../shared/api/wineSearch'
+import { env } from '../shared/config/env'
 import { getCachedCountries } from '../shared/services/countryCache'
 import CommentModal from '../features/cellar/CommentModal'
 
@@ -346,6 +348,49 @@ const CellarPage = () => {
 
   const hasFilters = search || filterType || filterCountry || filterRegion || filterGrape
 
+  const exportToXlsx = () => {
+    const WINE_TYPE_RU: Record<string, string> = {
+      RED: 'Красное', WHITE: 'Белое', ROSE: 'Розовое',
+      SPARKLING: 'Игристое', SWEET: 'Десертное', FORTIFIED: 'Креплёное', OTHER: 'Другое',
+    }
+    const rows = sorted.map((item, idx) => ({
+      '№': idx + 1,
+      'Производитель': item.producer,
+      'Название': item.name,
+      'Год урожая': item.vintageYear ?? '',
+      'Страна': item.country ?? '',
+      'Регион': item.region ?? '',
+      'Тип вина': item.wineType ? (WINE_TYPE_RU[item.wineType] ?? item.wineType) : '',
+      'Сорта винограда': item.grapes?.join(', ') ?? '',
+      'Количество (бут.)': item.quantity,
+      'Дата добавления': item.createdAt
+        ? new Date(item.createdAt).toLocaleDateString('ru-RU')
+        : '',
+      'Фото URL': item.photoPath
+        ? (item.photoPath.startsWith('http') ? item.photoPath : `${env.API_URL}/${item.photoPath}`)
+        : '',
+    }))
+
+    const wb = XLSX.utils.book_new()
+    const ws = XLSX.utils.json_to_sheet(rows)
+    ws['!cols'] = [
+      { wch: 4 },  // №
+      { wch: 22 }, // Производитель
+      { wch: 32 }, // Название
+      { wch: 10 }, // Год
+      { wch: 16 }, // Страна
+      { wch: 20 }, // Регион
+      { wch: 12 }, // Тип вина
+      { wch: 34 }, // Сорта винограда
+      { wch: 14 }, // Количество
+      { wch: 16 }, // Дата
+      { wch: 55 }, // Фото URL
+    ]
+    XLSX.utils.book_append_sheet(wb, ws, 'Погреб')
+    const date = new Date().toISOString().slice(0, 10)
+    XLSX.writeFile(wb, `enolo-cellar-${date}.xlsx`)
+  }
+
   if (loading) {
     return (
       <Container maxWidth={false} sx={{ py: 4, display: 'flex', justifyContent: 'center' }}>
@@ -413,6 +458,12 @@ const CellarPage = () => {
         )}
 
         <Box sx={{ flex: 1 }} />
+
+        <Tooltip title={`Экспорт в Excel (${sorted.length} позиций)`}>
+          <IconButton size="small" onClick={exportToXlsx}>
+            <FileDownloadRounded fontSize="small" />
+          </IconButton>
+        </Tooltip>
 
         <Tooltip title="Настройка столбцов">
           <IconButton size="small" onClick={(e) => setSettingsAnchor(e.currentTarget)}>
@@ -512,7 +563,11 @@ const CellarPage = () => {
                         <>
                           {colKey === 'photo' ? (
                             item.photoPath ? (
-                              <img src={item.photoPath} alt="" style={{ width: 40, height: 40, objectFit: 'cover', borderRadius: 4 }} />
+                              <img
+                                src={item.photoPath.startsWith('http') ? item.photoPath : `${env.API_URL}/${item.photoPath}`}
+                                alt=""
+                                style={{ width: 40, height: 54, objectFit: 'contain', borderRadius: 4, background: '#f5f3f0', display: 'block' }}
+                              />
                             ) : (
                               <Typography variant="caption" color="text.disabled">—</Typography>
                             )

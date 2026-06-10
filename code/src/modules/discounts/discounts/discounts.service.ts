@@ -15,6 +15,8 @@ export interface DiscountFilters {
   confidence?: string
   status?: string
   search?: string
+  grapes?: string[]
+  monosort?: boolean
   page?: number
   limit?: number
   sort?: string
@@ -58,6 +60,12 @@ export class DiscountsService {
         { wineName: { contains: filters.search, mode: 'insensitive' } },
       ]
     }
+    if (filters.grapes && filters.grapes.length > 0) {
+      where.grapes = { hasSome: filters.grapes }
+    }
+    if (filters.monosort) {
+      where.grapeCount = 1
+    }
 
     const orderBy = this.getOrderBy(filters.sort)
 
@@ -78,11 +86,19 @@ export class DiscountsService {
           sellerName: item.sellerName,
           producer: item.producer,
           wineName: item.wineName,
+          wineNameRaw: item.wineNameRaw,
           fullName: item.fullName,
           vintage: item.vintage,
           country: item.country,
           region: item.region,
+          regionCanonical: item.regionCanonical,
+          appellation: item.appellation,
           originZone: item.originZone,
+          sweetness: item.sweetness,
+          alcohol: item.alcohol,
+          ageingVessel: item.ageingVessel,
+          storagePotential: item.storagePotential,
+          description: item.description,
           wineType: item.wineType,
           volumeMl: item.volumeMl,
           currentPrice: parseFloat(String(item.currentPrice)),
@@ -93,6 +109,8 @@ export class DiscountsService {
           url: item.url,
           imageUrl: item.imageUrl,
           availability: item.availability,
+          grapes: item.grapes,
+          grapeCount: item.grapeCount,
           confidence: item.confidence,
           status: item.status,
           lastCheckedAt: item.lastCheckedAt,
@@ -104,6 +122,49 @@ export class DiscountsService {
     } catch (error) {
       this.logger.error(`getOffers error: ${error}`)
       throw error
+    }
+  }
+
+  async getLastUpdated(): Promise<{ lastUpdated: string | null }> {
+    const result = await this.prisma.$queryRaw<{ min_last: Date | null }[]>`
+      SELECT MIN(max_per_store) AS min_last
+      FROM (
+        SELECT MAX("finished_at") AS max_per_store
+        FROM "scrape_job"
+        WHERE status IN ('success', 'partial_success')
+          AND "finished_at" IS NOT NULL
+        GROUP BY "store_id"
+      ) sub
+    `
+    const dt = result[0]?.min_last
+    return { lastUpdated: dt ? dt.toISOString() : null }
+  }
+
+  async getFilterOptions(): Promise<{ grapes: string[]; countries: string[] }> {
+    const [grapesRaw, countriesRaw] = await Promise.all([
+      this.prisma.$queryRaw<{ grape: string }[]>`
+        SELECT grape, COUNT(*) AS cnt
+        FROM (
+          SELECT UNNEST(grapes) AS grape
+          FROM "discount_offer"
+          WHERE deleted = false
+        ) t
+        WHERE grape <> ''
+        GROUP BY grape
+        HAVING COUNT(*) >= 3
+        ORDER BY cnt DESC
+        LIMIT 80
+      `,
+      this.prisma.discountOffer.findMany({
+        where: { deleted: false, country: { not: null }, status: { not: 'hidden' } },
+        select: { country: true },
+        distinct: ['country'],
+        orderBy: { country: 'asc' },
+      }),
+    ])
+    return {
+      grapes: grapesRaw.map((r) => r.grape).filter(Boolean),
+      countries: countriesRaw.map((r) => r.country).filter(Boolean) as string[],
     }
   }
 

@@ -1,6 +1,10 @@
 import { Injectable, Logger } from '@nestjs/common'
 import { PrismaService } from '../../../shared/database/prisma.service'
 import { AiModelsService } from '../../ai-models/ai-models.service'
+import { RegionResolverService } from './region-resolver.service'
+import { GrapeResolverService } from './grape-resolver.service'
+import { normalizeGrapes } from './grape.util'
+import { extractWineDetails } from './wine-detail.util'
 
 export interface NormalizedWineInfo {
   producer: string | null
@@ -22,6 +26,8 @@ export class NormalizerService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly aiModelsService: AiModelsService,
+    private readonly regionResolver: RegionResolverService,
+    private readonly grapeResolver: GrapeResolverService,
   ) {}
 
   async normalizeAll(storeId?: string): Promise<{ created: number; updated: number }> {
@@ -182,6 +188,30 @@ export class NormalizerService {
 
     const normalizedWineType = wineInfo ? (wineTypeMap[wineInfo.wineType] ?? 'OTHER') : null
 
+    // Centralized grape normalization: split packed values, Title Case, strip
+    // parentheticals/percentages, de-duplicate — uniform across all stores. Then
+    // map each to its canonical variety via the synonym dictionary (cheap, LLM-free
+    // lookup; unmapped spellings are resolved later by GrapeResolverService).
+    const grapes: string[] = await this.grapeResolver.mapToCanonical(normalizeGrapes(payload.grapes))
+    const grapeCount = grapes.length
+
+    // Region unification: always compute the deterministic key; attach the canonical
+    // region only if already resolved (cheap, LLM-free lookup). New keys are resolved
+    // later by RegionResolverService (admin endpoint / batch), so normalization stays
+    // fast and never blocks on the LLM.
+    const rawRegion = wineInfo?.region ?? null
+    const { regionKey, resolved } = await this.regionResolver.lookupByRaw(rawRegion)
+
+    // Description: free-text seller notes collected per-scraper into payload.description.
+    const description =
+      typeof payload.description === 'string' && payload.description.trim().length > 0
+        ? payload.description.trim()
+        : null
+
+    // Typed wine details: mapped centrally from the scraper's raw characteristics
+    // map (label→value) via a synonym dictionary, with fallback to explicit fields.
+    const details = extractWineDetails(payload.characteristics, payload)
+
     await this.prisma.discountOffer.upsert({
       where: { rawOfferId: raw.id },
       create: {
@@ -189,13 +219,22 @@ export class NormalizerService {
         rawOfferId: raw.id,
         sellerName: store.name,
         wineNameRaw: raw.rawTitle,
-        producer: wineInfo?.producer ?? null,
+        producer: details.producer ?? wineInfo?.producer ?? null,
         wineName: wineInfo?.wineName ?? null,
         fullName: wineInfo?.fullName ?? null,
         vintage: wineInfo?.vintage ?? null,
         country: wineInfo?.country ?? null,
-        region: wineInfo?.region ?? null,
+        region: rawRegion,
+        regionKey: regionKey ?? null,
+        regionCanonical: resolved?.canonicalName ?? null,
+        regionId: resolved?.regionId ?? null,
         originZone: wineInfo?.originZone ?? null,
+        appellation: details.appellation,
+        sweetness: details.sweetness,
+        alcohol: details.alcohol,
+        ageingVessel: details.ageingVessel,
+        storagePotential: details.storagePotential,
+        description,
         wineType: normalizedWineType,
         volumeMl: wineInfo?.volumeMl ?? null,
         currentPrice: finalCurrentPrice,
@@ -206,6 +245,8 @@ export class NormalizerService {
         url: raw.rawUrl,
         imageUrl: raw.rawImageUrl,
         availability: raw.rawAvailability,
+        grapes,
+        grapeCount,
         confidence: wineInfo?.confidence === 'high' ? 'high' : wineInfo?.confidence === 'low' ? 'low' : 'medium',
         status: this.determineStatus(raw.rawAvailability),
         lastCheckedAt: new Date(),
@@ -213,13 +254,22 @@ export class NormalizerService {
       update: {
         sellerName: store.name,
         wineNameRaw: raw.rawTitle,
-        producer: wineInfo?.producer ?? null,
+        producer: details.producer ?? wineInfo?.producer ?? null,
         wineName: wineInfo?.wineName ?? null,
         fullName: wineInfo?.fullName ?? null,
         vintage: wineInfo?.vintage ?? null,
         country: wineInfo?.country ?? null,
-        region: wineInfo?.region ?? null,
+        region: rawRegion,
+        regionKey: regionKey ?? null,
+        regionCanonical: resolved?.canonicalName ?? null,
+        regionId: resolved?.regionId ?? null,
         originZone: wineInfo?.originZone ?? null,
+        appellation: details.appellation,
+        sweetness: details.sweetness,
+        alcohol: details.alcohol,
+        ageingVessel: details.ageingVessel,
+        storagePotential: details.storagePotential,
+        description,
         wineType: normalizedWineType,
         volumeMl: wineInfo?.volumeMl ?? null,
         currentPrice: finalCurrentPrice,
@@ -229,6 +279,8 @@ export class NormalizerService {
         url: raw.rawUrl,
         imageUrl: raw.rawImageUrl,
         availability: raw.rawAvailability,
+        grapes,
+        grapeCount,
         confidence: wineInfo?.confidence === 'high' ? 'high' : wineInfo?.confidence === 'low' ? 'low' : 'medium',
         status: this.determineStatus(raw.rawAvailability),
         lastCheckedAt: new Date(),

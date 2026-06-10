@@ -12,7 +12,7 @@
 
 ---
 
-## Пересобрать бэкенд и фронтенд
+## Пересобрать бэкенд, фронтенд и Перезапустить
 ```powershell
 # Остановить все процессы
 Stop-Process -Name "node" -Force -ErrorAction SilentlyContinue
@@ -25,6 +25,12 @@ npx nest build
 # Пересобрать фронтенд
 Set-Location "C:\Users\LoGun\Documents\ClaudeProjects\AI-wine-cellar\code\frontend"
 npm run build
+
+# Запустить с логами
+Start-Sleep -Seconds 2
+Set-Location "C:\Users\LoGun\Documents\ClaudeProjects\AI-wine-cellar\code"
+Start-Process -FilePath "cmd.exe" -ArgumentList "/k npm run start:dev" -WorkingDirectory "C:\Users\LoGun\Documents\ClaudeProjects\AI-wine-cellar\code"
+Start-Process -FilePath "cmd.exe" -ArgumentList "/c npm run dev" -WorkingDirectory "C:\Users\LoGun\Documents\ClaudeProjects\AI-wine-cellar\code\frontend" -WindowStyle Hidden
 ```
 
 ---

@@ -6,6 +6,7 @@ import { PrismaService } from '../../shared/database/prisma.service'
 import { AuthController } from './auth.controller'
 import { AuthService } from './auth.service'
 import { JwtStrategy } from './jwt.strategy'
+import { PushModule } from '../push/push.module'
 
 @Module({
   imports: [
@@ -18,6 +19,7 @@ import { JwtStrategy } from './jwt.strategy'
       }),
       inject: [ConfigService],
     }),
+    PushModule,
   ],
   controllers: [AuthController],
   providers: [PrismaService, AuthService, JwtStrategy],
