@@ -12,7 +12,7 @@ class PushRepository @Inject constructor(
     private val pushApi: PushApi,
     private val settingsStore: SettingsStore,
 ) {
-    /** Called after login. Reads the FCM token saved by EnoloFirebaseMessagingService and sends it to the backend. */
+    /** Called after login. Reads the FCM token saved by MerloticFirebaseMessagingService and sends it to the backend. */
     suspend fun syncFcmToken() {
         val token = settingsStore.fcmTokenBlocking() ?: return
         safeApiCall { pushApi.registerToken(FcmTokenRequest(token)) }

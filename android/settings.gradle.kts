@@ -19,5 +19,5 @@ dependencyResolutionManagement {
     }
 }
 
-rootProject.name = "Enolo"
+rootProject.name = "Merlotic"
 include(":app")

@@ -5,7 +5,7 @@ import androidx.compose.material3.lightColorScheme
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.graphics.Color
 
-val EnoloColorScheme = lightColorScheme(
+val MerloticColorScheme = lightColorScheme(
     primary              = TokenTeal,
     onPrimary            = Color.White,
     primaryContainer     = TokenTealWash,
@@ -38,10 +38,10 @@ val EnoloColorScheme = lightColorScheme(
 )
 
 @Composable
-fun EnoloTheme(content: @Composable () -> Unit) {
+fun MerloticTheme(content: @Composable () -> Unit) {
     MaterialTheme(
-        colorScheme = EnoloColorScheme,
-        typography  = EnoloTypography,
+        colorScheme = MerloticColorScheme,
+        typography  = MerloticTypography,
         content     = content
     )
 }

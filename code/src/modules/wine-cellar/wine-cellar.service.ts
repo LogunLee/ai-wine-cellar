@@ -3,6 +3,8 @@ import { PrismaService } from '../../shared/database/prisma.service'
 import { WineType } from '@prisma/client'
 import * as fs from 'fs'
 import * as path from 'path'
+import { VivinoService } from '../vivino/vivino.service'
+import { WineCriticService } from '../wine-critic/wine-critic.service'
 
 export interface AddWineToCellarDto {
   producer: string
@@ -16,7 +18,11 @@ export interface AddWineToCellarDto {
 
 @Injectable()
 export class WineCellarService {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly vivino: VivinoService,
+    private readonly critic: WineCriticService,
+  ) {}
 
   async getCountries() {
     return this.prisma.country.findMany({ orderBy: { name: 'asc' } })
@@ -58,6 +64,9 @@ export class WineCellarService {
         quantity: item.quantity,
         status: item.status,
         createdAt: item.createdAt,
+        vivinoUrl: item.wineVintage.series.vivinoUrl ?? null,
+        wineSearcherUrl: item.wineVintage.series.wineSearcherUrl ?? null,
+        criticScores: (item.wineVintage.series.criticScores as Record<string, number> | null) ?? null,
       }
     })
   }
@@ -128,6 +137,30 @@ export class WineCellarService {
 
     if (!series) {
       throw new NotFoundException('Не удалось создать серию вина')
+    }
+
+    // Fetch Vivino URL in background if not yet resolved
+    if (!series.vivinoUrl) {
+      this.vivino.findWineUrl(series.producer, series.name, dto.vintageYear).then((url) => {
+        if (url) {
+          this.prisma.wineSeries.update({ where: { id: series!.id }, data: { vivinoUrl: url } }).catch(() => {})
+        }
+      })
+    }
+
+    // Fetch Wine-Searcher URL + critic scores in background
+    if (!series.wineSearcherUrl) {
+      this.critic.findWine(series.producer, series.name, dto.vintageYear).then((result) => {
+        if (result) {
+          this.prisma.wineSeries.update({
+            where: { id: series!.id },
+            data: {
+              wineSearcherUrl: result.url,
+              ...(Object.keys(result.scores).length > 0 && { criticScores: result.scores }),
+            },
+          }).catch(() => {})
+        }
+      })
     }
 
     let vintage = await this.prisma.wineVintage.findFirst({
@@ -374,6 +407,50 @@ export class WineCellarService {
     } catch {
       return null
     }
+  }
+
+  async setVivinoUrl(userId: string, itemId: string, vivinoUrl: string): Promise<{ ok: boolean }> {
+    const cellar = await this.prisma.wineCellar.findFirst({ where: { ownerId: userId } })
+    if (!cellar) throw new NotFoundException('Погреб не найден')
+
+    const item = await this.prisma.cellarItem.findFirst({
+      where: { id: itemId, cellarId: cellar.id, deletedAt: null },
+      include: { wineVintage: true },
+    })
+    if (!item) throw new NotFoundException('Вино не найдено')
+
+    await this.prisma.wineSeries.update({
+      where: { id: item.wineVintage.seriesId },
+      data: { vivinoUrl },
+    })
+    return { ok: true }
+  }
+
+  async setWineSearcherUrl(userId: string, itemId: string, wineSearcherUrl: string): Promise<{ ok: boolean }> {
+    const cellar = await this.prisma.wineCellar.findFirst({ where: { ownerId: userId } })
+    if (!cellar) throw new NotFoundException('Погреб не найден')
+
+    const item = await this.prisma.cellarItem.findFirst({
+      where: { id: itemId, cellarId: cellar.id, deletedAt: null },
+      include: { wineVintage: true },
+    })
+    if (!item) throw new NotFoundException('Вино не найдено')
+
+    await this.prisma.wineSeries.update({
+      where: { id: item.wineVintage.seriesId },
+      data: { wineSearcherUrl },
+    })
+
+    // Re-fetch critic scores for the newly chosen URL in background
+    this.critic.extractScoresFromUrl(wineSearcherUrl).then((scores) => {
+      if (scores) {
+        this.prisma.wineSeries
+          .update({ where: { id: item.wineVintage.seriesId }, data: { criticScores: scores } })
+          .catch(() => {})
+      }
+    })
+
+    return { ok: true }
   }
 
   private normalizeWineType(input?: string): WineType {

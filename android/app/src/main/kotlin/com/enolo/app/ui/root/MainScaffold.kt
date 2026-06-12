@@ -35,7 +35,7 @@ fun MainScaffold(rootViewModel: RootViewModel) {
     }
 
     Scaffold(
-        bottomBar = { EnoloBottomBar(navController) }
+        bottomBar = { MerloticBottomBar(navController) }
     ) { innerPadding ->
         NavHost(
             navController = navController,

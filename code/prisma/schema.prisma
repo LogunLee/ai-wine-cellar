@@ -169,6 +169,9 @@ model WineSeries {
   region      String?
   appellation String?
   wineType    WineType      @map("wine_type")
+  vivinoUrl       String?   @map("vivino_url")
+  wineSearcherUrl String?   @map("wine_searcher_url")
+  criticScores    Json?     @map("critic_scores")
   createdAt   DateTime      @default(now()) @map("created_at")
   updatedAt   DateTime      @updatedAt @map("updated_at")
   country     Country       @relation(fields: [countryId], references: [id])

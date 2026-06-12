@@ -19,6 +19,9 @@ data class CellarItemDto(
     val createdAt: String = "",
     val drinkWindowFrom: Int? = null,
     val drinkWindowTo: Int? = null,
+    val vivinoUrl: String? = null,
+    val wineSearcherUrl: String? = null,
+    val criticScores: Map<String, Int>? = null,
 )
 
 @Serializable

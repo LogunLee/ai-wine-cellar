@@ -29,7 +29,7 @@ val bottomNavItems = listOf(
 )
 
 @Composable
-fun EnoloBottomBar(navController: NavController) {
+fun MerloticBottomBar(navController: NavController) {
     val navBackStackEntry by navController.currentBackStackEntryAsState()
     val currentRoute = navBackStackEntry?.destination?.route
 

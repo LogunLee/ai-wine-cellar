@@ -278,8 +278,8 @@ private fun HomeTopBar() {
     ) {
         // Logo + wordmark
         AsyncImage(
-            model             = "file:///android_asset/logo.jpg",
-            contentDescription = "Enolo",
+            model             = "file:///android_asset/logo.png",
+            contentDescription = "Merlotic",
             contentScale       = ContentScale.Crop,
             modifier           = Modifier
                 .size(30.dp)
@@ -287,7 +287,7 @@ private fun HomeTopBar() {
         )
         Spacer(Modifier.width(8.dp))
         Text(
-            text  = "Enolo",
+            text  = "Merlotic",
             style = MaterialTheme.typography.titleLarge.copy(
                 fontWeight    = FontWeight.SemiBold,
                 fontSize      = 21.sp,

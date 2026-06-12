@@ -72,11 +72,11 @@ export const MainLayout = () => {
       <Box sx={{ flexShrink: 0 }}>
         <Toolbar disableGutters sx={{ justifyContent: 'flex-start', px: 2, minHeight: '63px !important' }}>
           <Box sx={{ width: 36, height: 36, borderRadius: '50%', overflow: 'hidden' }}>
-            <img src="/logo.jpg" alt="Enolo" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+            <img src="/logo.png" alt="Merlotic" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
           </Box>
           {!collapsed && (
             <Typography variant="h5" sx={{ fontWeight: 700, ml: 2 }}>
-              Enolo
+              Merlotic
             </Typography>
           )}
         </Toolbar>

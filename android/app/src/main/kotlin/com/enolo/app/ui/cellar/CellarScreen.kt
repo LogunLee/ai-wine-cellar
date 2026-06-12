@@ -2,6 +2,7 @@ package com.enolo.app.ui.cellar
 
 import android.Manifest
 import android.content.Context
+import android.content.Intent
 import android.content.pm.PackageManager
 import android.net.Uri
 import androidx.activity.compose.rememberLauncherForActivityResult
@@ -94,6 +95,10 @@ fun CellarScreen(viewModel: CellarViewModel = hiltViewModel()) {
     var cameraUri        by remember { mutableStateOf<Uri?>(null) }
     var showPhotoOptions by remember { mutableStateOf(false) }
 
+    // Vivino link
+    var vivinoLinkItem        by remember { mutableStateOf<CellarItemDto?>(null) }
+    var wineSearcherLinkItem  by remember { mutableStateOf<CellarItemDto?>(null) }
+
     // Search in header
     var searchActive  by remember { mutableStateOf(false) }
     var searchText    by remember { mutableStateOf("") }
@@ -174,14 +179,47 @@ fun CellarScreen(viewModel: CellarViewModel = hiltViewModel()) {
     }
     if (activeSheet == "actions" && actionItem != null) {
         CellarActionSheet(
-            item        = actionItem!!,
-            photoUrl    = viewModel.absolutePhotoUrl(actionItem!!.photoPath),
-            onEdit      = { activeSheet = null; editItem = actionItem },
-            onNote      = { activeSheet = null; viewModel.loadNote(actionItem!!.id); noteItem = actionItem },
-            onConsume   = { viewModel.consumeOne(actionItem!!) { activeSheet = null } },
-            onDelete    = { activeSheet = null; deleteItem = actionItem },
-            onPhoto     = { photoItem = actionItem; activeSheet = null; showPhotoOptions = true },
-            onDismiss   = { activeSheet = null },
+            item           = actionItem!!,
+            photoUrl       = viewModel.absolutePhotoUrl(actionItem!!.photoPath),
+            onEdit         = { activeSheet = null; editItem = actionItem },
+            onNote         = { activeSheet = null; viewModel.loadNote(actionItem!!.id); noteItem = actionItem },
+            onConsume      = { viewModel.consumeOne(actionItem!!) { activeSheet = null } },
+            onDelete       = { activeSheet = null; deleteItem = actionItem },
+            onPhoto        = { photoItem = actionItem; activeSheet = null; showPhotoOptions = true },
+            onVivino       = { url ->
+                val intent = Intent(Intent.ACTION_VIEW, Uri.parse(url))
+                context.startActivity(intent)
+                activeSheet = null
+            },
+            onWineSearcher = { url ->
+                val intent = Intent(Intent.ACTION_VIEW, Uri.parse(url))
+                context.startActivity(intent)
+            },
+            onLinkVivino        = { vivinoLinkItem = actionItem; activeSheet = null },
+            onLinkWineSearcher  = { wineSearcherLinkItem = actionItem; activeSheet = null },
+            onDismiss           = { activeSheet = null },
+        )
+    }
+    vivinoLinkItem?.let { item ->
+        val initialQuery = "${item.producer} ${item.name}".trim()
+        VivinoSearchSheet(
+            initialQuery = initialQuery,
+            onSelect     = { url ->
+                viewModel.saveVivinoUrl(item.id, url)
+                vivinoLinkItem = null
+            },
+            onDismiss    = { vivinoLinkItem = null },
+        )
+    }
+    wineSearcherLinkItem?.let { item ->
+        val initialQuery = "${item.producer} ${item.name}".trim()
+        WineSearcherSearchSheet(
+            initialQuery = initialQuery,
+            onSelect     = { url ->
+                viewModel.saveWineSearcherUrl(item.id, url)
+                wineSearcherLinkItem = null
+            },
+            onDismiss    = { wineSearcherLinkItem = null },
         )
     }
 
@@ -703,6 +741,22 @@ private fun CellarBottleRow(
                     )
                 }
 
+                // Critic scores
+                val scoreText = item.criticScores
+                    ?.entries
+                    ?.sortedByDescending { it.value }
+                    ?.take(3)
+                    ?.joinToString(" · ") { "${abbreviateCritic(it.key)} ${it.value}" }
+                if (!scoreText.isNullOrBlank()) {
+                    Text(
+                        text       = scoreText,
+                        fontSize   = 11.sp,
+                        fontFamily = FontFamily.Monospace,
+                        color      = Teal,
+                        modifier   = Modifier.padding(top = 3.dp),
+                    )
+                }
+
                 // Meta pills row
                 Row(
                     modifier              = Modifier.padding(top = 6.dp),
@@ -888,14 +942,18 @@ private fun AddSheetAction(
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 private fun CellarActionSheet(
-    item      : CellarItemDto,
-    photoUrl  : String?,
-    onEdit    : () -> Unit,
-    onNote    : () -> Unit,
-    onConsume : () -> Unit,
-    onDelete  : () -> Unit,
-    onPhoto   : () -> Unit,
-    onDismiss : () -> Unit,
+    item                : CellarItemDto,
+    photoUrl            : String?,
+    onEdit              : () -> Unit,
+    onNote              : () -> Unit,
+    onConsume           : () -> Unit,
+    onDelete            : () -> Unit,
+    onPhoto             : () -> Unit,
+    onVivino            : (String) -> Unit,
+    onWineSearcher      : (String) -> Unit,
+    onLinkVivino        : () -> Unit,
+    onLinkWineSearcher  : () -> Unit,
+    onDismiss           : () -> Unit,
 ) {
     ModalBottomSheet(
         onDismissRequest = onDismiss,
@@ -943,6 +1001,18 @@ private fun CellarActionSheet(
 
             // Actions
             ActionRow(Icons.Default.AutoAwesome,  TealWash, Teal,  "Открыть карточку",    "AI-исследование и детали вина",     onClick = { /* stub */ })
+            if (!item.vivinoUrl.isNullOrBlank()) {
+                HorizontalDivider(color = Line, modifier = Modifier.padding(start = 72.dp))
+                ActionRow(Icons.Default.OpenInBrowser, TealWash, Teal, "Открыть в Vivino", "Рейтинг, отзывы, цены на vivino.com", onClick = { onVivino(item.vivinoUrl!!) })
+            }
+            if (!item.wineSearcherUrl.isNullOrBlank()) {
+                HorizontalDivider(color = Line, modifier = Modifier.padding(start = 72.dp))
+                ActionRow(Icons.Default.TravelExplore, TealWash, Teal, "Открыть в Wine-Searcher", "Цены и оценки критиков", onClick = { onWineSearcher(item.wineSearcherUrl!!); onDismiss() })
+            }
+            HorizontalDivider(color = Line, modifier = Modifier.padding(start = 72.dp))
+            ActionRow(Icons.Default.Link, Fill, Ink2, "Привязать к Vivino", "Найти и выбрать вино на Vivino", onClick = { onLinkVivino(); onDismiss() })
+            HorizontalDivider(color = Line, modifier = Modifier.padding(start = 72.dp))
+            ActionRow(Icons.Default.TravelExplore, Fill, Ink2, "Привязать к Wine-Searcher", "Найти вино и обновить оценки критиков", onClick = { onLinkWineSearcher(); onDismiss() })
             ActionRow(Icons.Default.RateReview,   TealWash, Teal,  "Написать отзыв",      "Оценка и заметка",                   onClick = { onNote();    onDismiss() })
             ActionRow(Icons.Default.Edit,         TealWash, Teal,  "Редактировать",       "Количество, год, окно употребления",  onClick = { onEdit();    onDismiss() })
             ActionRow(
@@ -1170,6 +1240,18 @@ private fun pluralPositions(n: Int): String {
         mod10 in 2..4    -> "позиции"
         else             -> "позиций"
     }
+}
+
+private fun abbreviateCritic(name: String): String = when {
+    name.contains("Advocate",  ignoreCase = true) -> "WA"
+    name.contains("Spectator", ignoreCase = true) -> "WS"
+    name.contains("Suckling",  ignoreCase = true) -> "JS"
+    name.contains("Vinous",    ignoreCase = true) -> "Vinous"
+    name.contains("Robinson",  ignoreCase = true) -> "JR"
+    name.contains("Decanter",  ignoreCase = true) -> "DC"
+    name.contains("Burghound", ignoreCase = true) -> "BH"
+    name.contains("Falstaff",  ignoreCase = true) -> "FS"
+    else -> name.take(4)
 }
 
 private fun formatAddedDate(createdAt: String): String = try {

@@ -246,6 +246,26 @@ class CellarViewModel @Inject constructor(
         }
     }
 
+    fun saveVivinoUrl(id: String, url: String, onDone: () -> Unit = {}) {
+        viewModelScope.launch {
+            when (repository.saveVivinoUrl(id, url)) {
+                is ApiResult.Success -> { load(); onDone() }
+                is ApiResult.Error        -> _actionError.value = "Ошибка сохранения Vivino"
+                is ApiResult.NetworkError -> _actionError.value = "Нет соединения"
+            }
+        }
+    }
+
+    fun saveWineSearcherUrl(id: String, url: String, onDone: () -> Unit = {}) {
+        viewModelScope.launch {
+            when (repository.saveWineSearcherUrl(id, url)) {
+                is ApiResult.Success -> { load(); onDone() }
+                is ApiResult.Error        -> _actionError.value = "Ошибка сохранения Wine-Searcher"
+                is ApiResult.NetworkError -> _actionError.value = "Нет соединения"
+            }
+        }
+    }
+
     fun absolutePhotoUrl(relativePath: String?) = repository.absolutePhotoUrl(relativePath)
 
     fun clearActionError() { _actionError.value = null }

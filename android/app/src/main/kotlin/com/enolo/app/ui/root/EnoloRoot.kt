@@ -76,7 +76,7 @@ class RootViewModel @Inject constructor(
 }
 
 @Composable
-fun EnoloRoot(
+fun MerloticRoot(
     viewModel: RootViewModel = hiltViewModel()
 ) {
     val authState by viewModel.authState.collectAsState()

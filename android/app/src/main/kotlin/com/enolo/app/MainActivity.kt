@@ -11,10 +11,10 @@ import androidx.activity.enableEdgeToEdge
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.activity.viewModels
 import androidx.core.content.ContextCompat
-import com.enolo.app.core.push.EnoloFirebaseMessagingService.Companion.EXTRA_PUSH_ROUTE
-import com.enolo.app.ui.root.EnoloRoot
+import com.enolo.app.core.push.MerloticFirebaseMessagingService.Companion.EXTRA_PUSH_ROUTE
+import com.enolo.app.ui.root.MerloticRoot
 import com.enolo.app.ui.root.RootViewModel
-import com.enolo.app.ui.theme.EnoloTheme
+import com.enolo.app.ui.theme.MerloticTheme
 import dagger.hilt.android.AndroidEntryPoint
 
 @AndroidEntryPoint
@@ -32,7 +32,7 @@ class MainActivity : ComponentActivity() {
         requestNotificationPermissionIfNeeded()
         handlePushIntent(intent)
         setContent {
-            EnoloTheme { EnoloRoot() }
+            MerloticTheme { MerloticRoot() }
         }
     }
 

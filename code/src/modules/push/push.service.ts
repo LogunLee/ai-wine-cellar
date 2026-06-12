@@ -25,7 +25,7 @@ export class PushService implements OnModuleInit {
     try {
       const serviceAccount = this.loadServiceAccount()
       if (!serviceAccount) return
-      this.app = initializeApp({ credential: cert(serviceAccount) }, 'enolo')
+      this.app = initializeApp({ credential: cert(serviceAccount) }, 'merlotic')
       this.logger.log('Firebase Admin initialized')
     } catch (e) {
       this.logger.error('Firebase Admin init failed', e)

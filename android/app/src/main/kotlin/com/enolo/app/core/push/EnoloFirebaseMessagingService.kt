@@ -19,7 +19,7 @@ import kotlinx.coroutines.launch
 import javax.inject.Inject
 
 @AndroidEntryPoint
-class EnoloFirebaseMessagingService : FirebaseMessagingService() {
+class MerloticFirebaseMessagingService : FirebaseMessagingService() {
 
     @Inject lateinit var settingsStore: SettingsStore
 
@@ -41,7 +41,7 @@ class EnoloFirebaseMessagingService : FirebaseMessagingService() {
         val nm = getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
 
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-            val channel = NotificationChannel(channelId, "Enolo", NotificationManager.IMPORTANCE_DEFAULT)
+            val channel = NotificationChannel(channelId, "Merlotic", NotificationManager.IMPORTANCE_DEFAULT)
             nm.createNotificationChannel(channel)
         }
 
@@ -66,7 +66,7 @@ class EnoloFirebaseMessagingService : FirebaseMessagingService() {
     }
 
     companion object {
-        const val CHANNEL_ID = "enolo_general"
+        const val CHANNEL_ID = "merlotic_general"
         const val EXTRA_PUSH_ROUTE = "push_route"
     }
 }

@@ -9,6 +9,8 @@ import { WineResearchModule } from './modules/wine-research/wine-research.module
 import { WineCellarModule } from './modules/wine-cellar/wine-cellar.module'
 import { DiscountsFeatureModule } from './modules/discounts/discounts-feature.module'
 import { PushModule } from './modules/push/push.module'
+import { VivinoModule } from './modules/vivino/vivino.module'
+import { WineCriticModule } from './modules/wine-critic/wine-critic.module'
 
 @Module({
   imports: [
@@ -22,6 +24,8 @@ import { PushModule } from './modules/push/push.module'
     WineCellarModule,
     DiscountsFeatureModule,
     PushModule,
+    VivinoModule,
+    WineCriticModule,
   ],
 })
 export class AppModule {}

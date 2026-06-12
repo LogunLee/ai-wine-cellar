@@ -8,6 +8,8 @@ import com.enolo.app.data.api.CellarApi
 import com.enolo.app.data.api.CountriesApi
 import com.enolo.app.data.api.DiscountsApi
 import com.enolo.app.data.api.PushApi
+import com.enolo.app.data.api.VivinoApi
+import com.enolo.app.data.api.WineCriticApi
 import com.enolo.app.data.api.WineSearchApi
 import com.jakewharton.retrofit2.converter.kotlinx.serialization.asConverterFactory
 import dagger.Module
@@ -148,4 +150,14 @@ object NetworkModule {
     @Singleton
     fun providePushApi(retrofit: Retrofit): PushApi =
         retrofit.create(PushApi::class.java)
+
+    @Provides
+    @Singleton
+    fun provideVivinoApi(retrofit: Retrofit): VivinoApi =
+        retrofit.create(VivinoApi::class.java)
+
+    @Provides
+    @Singleton
+    fun provideWineCriticApi(retrofit: Retrofit): WineCriticApi =
+        retrofit.create(WineCriticApi::class.java)
 }

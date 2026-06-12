@@ -7,6 +7,8 @@ import com.enolo.app.data.dto.MessageDto
 import com.enolo.app.data.dto.NoteDto
 import com.enolo.app.data.dto.NoteRequest
 import com.enolo.app.data.dto.PhotoResponse
+import com.enolo.app.data.dto.VivinoUrlRequest
+import com.enolo.app.data.dto.WineSearcherUrlRequest
 import okhttp3.MultipartBody
 import retrofit2.http.Body
 import retrofit2.http.DELETE
@@ -23,6 +25,12 @@ interface CellarApi {
 
     @POST("/wine-cellar/add")
     suspend fun add(@Body body: AddWineRequest): CellarItemDto
+
+    @PUT("/wine-cellar/{id}/vivino-url")
+    suspend fun saveVivinoUrl(@Path("id") id: String, @Body body: VivinoUrlRequest): MessageDto
+
+    @PUT("/wine-cellar/{id}/wine-searcher-url")
+    suspend fun saveWineSearcherUrl(@Path("id") id: String, @Body body: WineSearcherUrlRequest): MessageDto
 
     @PUT("/wine-cellar/{id}")
     suspend fun update(@Path("id") id: String, @Body body: AddWineRequest): CellarItemDto

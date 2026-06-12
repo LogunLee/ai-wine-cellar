@@ -7,25 +7,25 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.sp
 
 // Geist → system default (Roboto), Geist Mono → system monospace (Roboto Mono)
-val EnoloSans  = FontFamily.Default
-val EnoloMono  = FontFamily.Monospace
+val MerloticSans  = FontFamily.Default
+val MerloticMono  = FontFamily.Monospace
 
-val EnoloTypography = Typography(
+val MerloticTypography = Typography(
     // Основной текст
     bodyLarge = TextStyle(
-        fontFamily = EnoloSans,
+        fontFamily = MerloticSans,
         fontWeight = FontWeight.Normal,
         fontSize = 16.sp,
         lineHeight = 24.sp
     ),
     bodyMedium = TextStyle(
-        fontFamily = EnoloSans,
+        fontFamily = MerloticSans,
         fontWeight = FontWeight.Normal,
         fontSize = 13.5.sp,
         lineHeight = 20.sp
     ),
     bodySmall = TextStyle(
-        fontFamily = EnoloSans,
+        fontFamily = MerloticSans,
         fontWeight = FontWeight.Normal,
         fontSize = 11.5.sp,
         lineHeight = 16.sp
@@ -33,20 +33,20 @@ val EnoloTypography = Typography(
 
     // Лейблы
     labelLarge = TextStyle(
-        fontFamily = EnoloSans,
+        fontFamily = MerloticSans,
         fontWeight = FontWeight.Medium,
         fontSize = 13.sp,
         lineHeight = 18.sp
     ),
     labelMedium = TextStyle(
-        fontFamily = EnoloMono,
+        fontFamily = MerloticMono,
         fontWeight = FontWeight.Medium,
         fontSize = 11.sp,
         lineHeight = 14.sp,
         letterSpacing = 0.16.sp
     ),
     labelSmall = TextStyle(
-        fontFamily = EnoloMono,
+        fontFamily = MerloticMono,
         fontWeight = FontWeight.Normal,
         fontSize = 11.5.sp,
         lineHeight = 14.sp
@@ -54,20 +54,20 @@ val EnoloTypography = Typography(
 
     // Заголовки
     titleLarge = TextStyle(
-        fontFamily = EnoloSans,
+        fontFamily = MerloticSans,
         fontWeight = FontWeight.SemiBold,
         fontSize = 21.sp,
         lineHeight = 28.sp,
         letterSpacing = (-0.42).sp
     ),
     titleMedium = TextStyle(
-        fontFamily = EnoloSans,
+        fontFamily = MerloticSans,
         fontWeight = FontWeight.SemiBold,
         fontSize = 16.sp,
         lineHeight = 22.sp
     ),
     titleSmall = TextStyle(
-        fontFamily = EnoloSans,
+        fontFamily = MerloticSans,
         fontWeight = FontWeight.SemiBold,
         fontSize = 13.5.sp,
         lineHeight = 18.sp
@@ -75,7 +75,7 @@ val EnoloTypography = Typography(
 
     // Отображение (счётчик погреба)
     displaySmall = TextStyle(
-        fontFamily = EnoloMono,
+        fontFamily = MerloticMono,
         fontWeight = FontWeight.SemiBold,
         fontSize = 38.sp,
         lineHeight = 44.sp,
@@ -83,13 +83,13 @@ val EnoloTypography = Typography(
     ),
 
     headlineMedium = TextStyle(
-        fontFamily = EnoloSans,
+        fontFamily = MerloticSans,
         fontWeight = FontWeight.SemiBold,
         fontSize = 21.sp,
         lineHeight = 28.sp
     ),
     headlineSmall = TextStyle(
-        fontFamily = EnoloSans,
+        fontFamily = MerloticSans,
         fontWeight = FontWeight.SemiBold,
         fontSize = 18.sp,
         lineHeight = 24.sp

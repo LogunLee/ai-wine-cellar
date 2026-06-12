@@ -25,6 +25,26 @@ export class WineCellarController {
     return this.wineCellarService.addToCellar(user.userId, body)
   }
 
+  @Put(':id/vivino-url')
+  async setVivinoUrl(
+    @Req() req: Request,
+    @Param('id') id: string,
+    @Body() body: { vivinoUrl: string },
+  ) {
+    const user = (req as any).user as { userId: string }
+    return this.wineCellarService.setVivinoUrl(user.userId, id, body.vivinoUrl)
+  }
+
+  @Put(':id/wine-searcher-url')
+  async setWineSearcherUrl(
+    @Req() req: Request,
+    @Param('id') id: string,
+    @Body() body: { wineSearcherUrl: string },
+  ) {
+    const user = (req as any).user as { userId: string }
+    return this.wineCellarService.setWineSearcherUrl(user.userId, id, body.wineSearcherUrl)
+  }
+
   @Put(':id')
   async updateItem(
     @Req() req: Request,

@@ -11,6 +11,8 @@ import com.enolo.app.data.dto.FetchPhotoRequest
 import com.enolo.app.data.dto.NoteDto
 import com.enolo.app.data.dto.NoteRequest
 import com.enolo.app.data.dto.PhotoResponse
+import com.enolo.app.data.dto.VivinoUrlRequest
+import com.enolo.app.data.dto.WineSearcherUrlRequest
 import dagger.hilt.android.qualifiers.ApplicationContext
 import okhttp3.MediaType.Companion.toMediaTypeOrNull
 import okhttp3.MultipartBody
@@ -49,6 +51,12 @@ class CellarRepository @Inject constructor(
 
     suspend fun fetchPhoto(id: String, producer: String, name: String, vintageYear: Int?): ApiResult<PhotoResponse> =
         safeApiCall { cellarApi.fetchPhoto(id, FetchPhotoRequest(producer, name, vintageYear)) }
+
+    suspend fun saveVivinoUrl(id: String, url: String): ApiResult<Unit> =
+        safeApiCall { cellarApi.saveVivinoUrl(id, VivinoUrlRequest(url)); Unit }
+
+    suspend fun saveWineSearcherUrl(id: String, url: String): ApiResult<Unit> =
+        safeApiCall { cellarApi.saveWineSearcherUrl(id, WineSearcherUrlRequest(url)); Unit }
 
     /** Build absolute URL for a relative photo path from the server */
     fun absolutePhotoUrl(relativePath: String?): String? {

@@ -88,10 +88,10 @@ const LoginPage = () => {
                 flexShrink: 0,
               }}
             >
-              <img src="/logo.jpg" alt="Enolo" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+              <img src="/logo.png" alt="Merlotic" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
             </Box>
             <Typography variant="h3" sx={{ fontWeight: 700 }}>
-              Enolo
+              Merlotic
             </Typography>
           </Box>
 
