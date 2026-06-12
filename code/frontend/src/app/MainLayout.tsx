@@ -23,7 +23,6 @@ import {
   Liquor,
   Logout,
   Person,
-  LocalOffer,
   Percent,
   FavoriteBorder,
   ChevronLeft,
@@ -101,7 +100,7 @@ export const MainLayout = () => {
                   {!collapsed && (
                     <ListItemText
                       primary={item.text}
-                      slotProps={{ primary: { fontWeight: isActive ? 700 : 400 } }}
+                      slotProps={{ primary: { sx: { fontWeight: isActive ? 700 : 400 } } }}
                     />
                   )}
                 </ListItemButton>

@@ -1,5 +1,4 @@
 import { Module, OnModuleInit, forwardRef } from '@nestjs/common'
-import { PrismaService } from '../../../shared/database/prisma.service'
 import { ScraperService } from './scraper.service'
 import { TestScraper } from './test.scraper'
 import { CoolCleverScraper } from './coolclever.scraper'
@@ -14,7 +13,7 @@ import { SchedulerService } from '../scheduler/scheduler.service'
 
 @Module({
   imports: [NormalizerModule, forwardRef(() => SchedulerModule)],
-  providers: [PrismaService, ScraperService, TestScraper, CoolCleverScraper, SimpleWineScraper, WineLabScraper, AmwineScraper, FortwineScraper, MetroScraper],
+  providers: [ScraperService, TestScraper, CoolCleverScraper, SimpleWineScraper, WineLabScraper, AmwineScraper, FortwineScraper, MetroScraper],
   exports: [ScraperService],
 })
 export class ScraperModule implements OnModuleInit {

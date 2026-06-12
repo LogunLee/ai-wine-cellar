@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react'
 import {
   Dialog, DialogTitle, DialogContent, DialogActions,
-  Button, TextField, Box, Typography, IconButton,
+  Button, TextField, Typography, IconButton,
 } from '@mui/material'
 import { Close } from '@mui/icons-material'
 import { wineCellarApi } from '../../shared/api/wineSearch'

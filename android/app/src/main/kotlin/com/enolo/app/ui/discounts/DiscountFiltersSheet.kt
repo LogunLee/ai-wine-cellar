@@ -28,15 +28,15 @@ import androidx.compose.ui.unit.em
 import androidx.compose.ui.unit.sp
 import com.enolo.app.data.dto.StoreDto
 import com.enolo.app.data.repository.DiscountFilters
-
-// ─── Design tokens (updated for better contrast) ─────────────────────────────
-private val Ink      = Color(0xFF1A1A1D)
-private val Ink3     = Color(0xFF787880)
-private val Fill     = Color(0xFFEEECE9)
-private val Line     = Color(0xFFD6D4CF)
-private val Teal     = Color(0xFF1C6F5E)
-private val TealWash = Color(0xFFE9F3EE)
-private val MintBorder = Color(0xFFD8EAE0)
+import com.enolo.app.ui.components.MerloticSheet
+import com.enolo.app.ui.components.SheetDragHandle
+import com.enolo.app.ui.theme.TokenFill as Fill
+import com.enolo.app.ui.theme.TokenInk as Ink
+import com.enolo.app.ui.theme.TokenInk3 as Ink3
+import com.enolo.app.ui.theme.TokenLine as Line
+import com.enolo.app.ui.theme.TokenMintBorder as MintBorder
+import com.enolo.app.ui.theme.TokenTeal as Teal
+import com.enolo.app.ui.theme.TokenTealWash as TealWash
 
 // ─── Sheet ───────────────────────────────────────────────────────────────────
 
@@ -75,17 +75,9 @@ fun DiscountFiltersSheet(
         onDismissRequest = onDismiss,
         sheetState       = sheetState,
         containerColor   = Color.White,
-        scrimColor       = Color(0x51141419),
-        shape            = RoundedCornerShape(topStart = 22.dp, topEnd = 22.dp),
-        dragHandle = {
-            Box(
-                Modifier
-                    .padding(top = 8.dp, bottom = 4.dp)
-                    .size(width = 36.dp, height = 4.dp)
-                    .clip(RoundedCornerShape(2.dp))
-                    .background(Color(0xFFD6D6D4)),
-            )
-        },
+        scrimColor       = MerloticSheet.ScrimColor,
+        shape            = MerloticSheet.Shape,
+        dragHandle       = { SheetDragHandle() },
     ) {
         Column(
             Modifier

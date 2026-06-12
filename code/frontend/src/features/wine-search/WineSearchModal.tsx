@@ -76,7 +76,6 @@ interface EditableWine extends WineRecognitionResult {
 
 const WineSearchModal = ({ open, onClose }: WineSearchModalProps) => {
   const [searchText, setSearchText] = useState('')
-  const [hiddenText, setHiddenText] = useState('')
   const [images, setImages] = useState<string[]>([])
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -162,7 +161,6 @@ const WineSearchModal = ({ open, onClose }: WineSearchModalProps) => {
           const base64 = await compressImage(blob)
           setImages((prev) => [...prev, base64])
           if (searchText) {
-            setHiddenText(searchText)
             setSearchText('')
           }
         } catch (err) {
@@ -185,7 +183,6 @@ const WineSearchModal = ({ open, onClose }: WineSearchModalProps) => {
   useEffect(() => {
     if (!open) {
       setSearchText('')
-      setHiddenText('')
       setImages([])
       setResults([])
       setSearched(false)
@@ -569,9 +566,10 @@ const WineSearchModal = ({ open, onClose }: WineSearchModalProps) => {
                           const byIso2 = countries.find((c) => c.iso2 === draftCountry)
                           if (byIso2) return byIso2
                           const byName = countries.find((c) => c.name.toLowerCase() === draftCountry.toLowerCase())
-                          if (byName) return byName
-                          return null
-                        })()}
+                          return byName ?? null
+                          // null держит Autocomplete контролируемым при пустом значении,
+                          // хотя disableClearable типизирует value без null
+                        })() as unknown as Country}
                         onChange={(_, val) => updateDraft(wine._id, 'country', val?.iso2 || undefined)}
                         renderInput={(params) => (
                           <TextField {...params} label="Страна" sx={{ width: 150 }} />

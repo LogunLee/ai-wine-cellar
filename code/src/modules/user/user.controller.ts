@@ -5,12 +5,12 @@ import {
   Delete,
   UseInterceptors,
   UploadedFile,
-  Req,
 } from '@nestjs/common'
 import { FileInterceptor } from '@nestjs/platform-express'
 import { diskStorage } from 'multer'
 import { extname, join } from 'path'
-import type { Request } from 'express'
+import { CurrentUser } from '../../shared/auth/current-user.decorator'
+import type { AuthUser } from '../../shared/auth/current-user.decorator'
 import { UserService } from './user.service'
 
 @Controller('user')
@@ -18,8 +18,7 @@ export class UserController {
   constructor(private readonly userService: UserService) {}
 
   @Get('me')
-  async getMe(@Req() req: Request) {
-    const user = (req as any).user as { userId: string }
+  async getMe(@CurrentUser() user: AuthUser) {
     return this.userService.getProfile(user.userId)
   }
 
@@ -43,16 +42,14 @@ export class UserController {
       limits: { fileSize: 5 * 1024 * 1024 },
     }),
   )
-  async uploadAvatar(@Req() req: Request, @UploadedFile() file: Express.Multer.File) {
-    const user = (req as any).user as { userId: string }
+  async uploadAvatar(@CurrentUser() user: AuthUser, @UploadedFile() file: Express.Multer.File) {
     const avatarPath = `/uploads/${file.filename}`
     await this.userService.updateAvatar(user.userId, avatarPath)
     return { avatarPath }
   }
 
   @Delete('avatar')
-  async removeAvatar(@Req() req: Request) {
-    const user = (req as any).user as { userId: string }
+  async removeAvatar(@CurrentUser() user: AuthUser) {
     await this.userService.updateAvatar(user.userId, null as any)
     return { message: 'Avatar removed' }
   }

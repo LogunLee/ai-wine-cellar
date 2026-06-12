@@ -1,5 +1,6 @@
 import axios from 'axios'
 import { env } from '../config/env'
+import { tokenStorage } from './tokenStorage'
 
 export const api = axios.create({
   baseURL: env.API_URL,
@@ -7,7 +8,7 @@ export const api = axios.create({
 })
 
 api.interceptors.request.use((config) => {
-  const token = localStorage.getItem('access_token')
+  const token = tokenStorage.access
   if (token) {
     config.headers.Authorization = `Bearer ${token}`
   }
@@ -21,17 +22,14 @@ api.interceptors.response.use(
     if (error.response?.status === 401 && !originalRequest._retry) {
       originalRequest._retry = true
       try {
-        const refreshToken = localStorage.getItem('refresh_token')
         const { data } = await axios.post(`${env.API_URL}/auth/refresh`, {
-          refresh_token: refreshToken,
+          refresh_token: tokenStorage.refresh,
         })
-        localStorage.setItem('access_token', data.access_token)
-        localStorage.setItem('refresh_token', data.refresh_token)
+        tokenStorage.save(data.access_token, data.refresh_token)
         originalRequest.headers.Authorization = `Bearer ${data.access_token}`
         return api(originalRequest)
       } catch {
-        localStorage.removeItem('access_token')
-        localStorage.removeItem('refresh_token')
+        tokenStorage.clear()
         window.location.href = '/login'
       }
     }

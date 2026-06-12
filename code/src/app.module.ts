@@ -1,6 +1,7 @@
 import { Module } from '@nestjs/common'
 import { ConfigModule } from '@nestjs/config'
 import { ScheduleModule } from '@nestjs/schedule'
+import { DatabaseModule } from './shared/database/database.module'
 import { AuthModule } from './modules/auth/auth.module'
 import { UserModule } from './modules/user/user.module'
 import { AiModelsModule } from './modules/ai-models/ai-models.module'
@@ -16,6 +17,7 @@ import { WineCriticModule } from './modules/wine-critic/wine-critic.module'
   imports: [
     ConfigModule.forRoot({ isGlobal: true }),
     ScheduleModule.forRoot(),
+    DatabaseModule,
     AuthModule,
     UserModule,
     AiModelsModule,

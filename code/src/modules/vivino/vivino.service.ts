@@ -1,4 +1,5 @@
 import { Injectable, Logger } from '@nestjs/common'
+import { toSearchWords, slugToTitle } from '../../shared/util/text.util'
 
 const HEADERS = {
   'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
@@ -50,10 +51,7 @@ export class VivinoService {
       const year = yearMatch ? parseInt(yearMatch[1], 10) : null
 
       if (!wines.has(path)) {
-        const humanName = slug
-          .replace(/\/w\/\d+$/, '')
-          .replace(/-/g, ' ')
-          .replace(/\b\w/g, (c) => c.toUpperCase())
+        const humanName = slugToTitle(slug.replace(/\/w\/\d+$/, ''))
         wines.set(path, { name: humanName, years: new Set() })
       }
       if (year) wines.get(path)!.years.add(year)
@@ -85,9 +83,9 @@ export class VivinoService {
       }
       if (!entries.length) return null
 
-      const queryWords = this.toWords(query)
+      const queryWords = toSearchWords(query)
       const scored = entries.map((e) => {
-        const slugWords = this.toWords(e.slug)
+        const slugWords = toSearchWords(e.slug)
         const matched = queryWords.filter((w) => slugWords.includes(w)).length
         return { ...e, score: matched / queryWords.length }
       })
@@ -129,15 +127,5 @@ export class VivinoService {
     } catch {
       return null
     }
-  }
-
-  private toWords(text: string): string[] {
-    return text
-      .toLowerCase()
-      .normalize('NFD')
-      .replace(/[̀-ͯ]/g, '')
-      .replace(/[^a-z0-9]+/g, ' ')
-      .split(' ')
-      .filter((w) => w.length > 1)
   }
 }

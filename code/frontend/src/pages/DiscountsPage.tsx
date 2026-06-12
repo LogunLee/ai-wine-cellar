@@ -554,7 +554,7 @@ const DiscountsPage = () => {
               sx={{ fontSize: '14px', py: 0.5, gap: 1 }}
             >
               <Switch size="small" checked={filterMonosort} tabIndex={-1} disableRipple />
-              <ListItemText primary="Моносортовое" primaryTypographyProps={{ fontSize: '14px' }} />
+              <ListItemText primary="Моносортовое" slotProps={{ primary: { sx: { fontSize: '14px' } } }} />
             </MenuItem>
             <Divider />
             <ListSubheader sx={{ p: 1, lineHeight: 'normal', bgcolor: 'background.paper' }}>
@@ -572,7 +572,7 @@ const DiscountsPage = () => {
             {filteredGrapes.map((g) => (
               <MenuItem key={g} value={g} sx={{ fontSize: '14px', py: 0.5 }}>
                 <Checkbox checked={filterGrapes.includes(g)} size="small" sx={{ py: 0 }} />
-                <ListItemText primary={g} primaryTypographyProps={{ fontSize: '14px' }} />
+                <ListItemText primary={g} slotProps={{ primary: { sx: { fontSize: '14px' } } }} />
               </MenuItem>
             ))}
             {availableGrapes.length === 0 && (

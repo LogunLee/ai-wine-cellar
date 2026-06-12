@@ -2,7 +2,6 @@ import { Module } from '@nestjs/common'
 import { JwtModule } from '@nestjs/jwt'
 import { PassportModule } from '@nestjs/passport'
 import { ConfigModule, ConfigService } from '@nestjs/config'
-import { PrismaService } from '../../shared/database/prisma.service'
 import { AuthController } from './auth.controller'
 import { AuthService } from './auth.service'
 import { JwtStrategy } from './jwt.strategy'
@@ -22,7 +21,7 @@ import { PushModule } from '../push/push.module'
     PushModule,
   ],
   controllers: [AuthController],
-  providers: [PrismaService, AuthService, JwtStrategy],
+  providers: [AuthService, JwtStrategy],
   exports: [AuthService],
 })
 export class AuthModule {}

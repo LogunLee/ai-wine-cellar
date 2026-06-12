@@ -1,5 +1,6 @@
 import { create } from 'zustand'
-import { authApi, type AuthResponse } from '../../shared/api/auth'
+import { authApi } from '../../shared/api/auth'
+import { tokenStorage } from '../../shared/api/tokenStorage'
 
 interface User {
   id: string
@@ -30,8 +31,7 @@ export const useAuthStore = create<AuthState>((set) => ({
     set({ isLoading: true })
     try {
       const { data } = await authApi.login({ email, password })
-      localStorage.setItem('access_token', data.access_token)
-      localStorage.setItem('refresh_token', data.refresh_token)
+      tokenStorage.save(data.access_token, data.refresh_token)
       set({ user: data.user, isAuthenticated: true, isLoading: false, isChecking: false })
     } catch (error) {
       set({ isLoading: false })
@@ -43,8 +43,7 @@ export const useAuthStore = create<AuthState>((set) => ({
     set({ isLoading: true })
     try {
       const { data } = await authApi.register({ email, password, displayName })
-      localStorage.setItem('access_token', data.access_token)
-      localStorage.setItem('refresh_token', data.refresh_token)
+      tokenStorage.save(data.access_token, data.refresh_token)
       set({ user: data.user, isAuthenticated: true, isLoading: false, isChecking: false })
     } catch (error) {
       set({ isLoading: false })
@@ -54,20 +53,18 @@ export const useAuthStore = create<AuthState>((set) => ({
 
   logout: async () => {
     try {
-      const refreshToken = localStorage.getItem('refresh_token')
+      const refreshToken = tokenStorage.refresh
       if (refreshToken) {
         await authApi.logout(refreshToken)
       }
     } finally {
-      localStorage.removeItem('access_token')
-      localStorage.removeItem('refresh_token')
+      tokenStorage.clear()
       set({ user: null, isAuthenticated: false, isChecking: false })
     }
   },
 
   checkAuth: async () => {
-    const token = localStorage.getItem('access_token')
-    if (!token) {
+    if (!tokenStorage.access) {
       set({ isAuthenticated: false, user: null, isChecking: false })
       return
     }
@@ -75,8 +72,7 @@ export const useAuthStore = create<AuthState>((set) => ({
       const { data } = await authApi.me()
       set({ user: data, isAuthenticated: true, isChecking: false })
     } catch {
-      localStorage.removeItem('access_token')
-      localStorage.removeItem('refresh_token')
+      tokenStorage.clear()
       set({ isAuthenticated: false, user: null, isChecking: false })
     }
   },

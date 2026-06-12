@@ -1,4 +1,5 @@
 import { Injectable, Logger } from '@nestjs/common'
+import { toSearchWords, slugToTitle } from '../../shared/util/text.util'
 
 export interface CriticScores {
   [critic: string]: number
@@ -48,8 +49,7 @@ export class WineCriticService {
         seen.add(path)
         const slug = m[2]
         const url  = `https://www.wine-searcher.com${path}`
-        const name = slug.replace(/-/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase())
-        results.push({ name, url })
+        results.push({ name: slugToTitle(slug), url })
       }
 
       return results.slice(0, 25)
@@ -92,10 +92,10 @@ export class WineCriticService {
       if (!detailLinks.length) return null
 
       // Score by word overlap
-      const queryWords = this.toWords(query)
+      const queryWords = toSearchWords(query)
       const scored = detailLinks
         .map((l) => {
-          const slugWords = this.toWords(l.slug)
+          const slugWords = toSearchWords(l.slug)
           const matched = queryWords.filter((w) => slugWords.includes(w)).length
           return { ...l, score: matched / queryWords.length }
         })
@@ -168,15 +168,5 @@ export class WineCriticService {
     } catch {
       return null
     }
-  }
-
-  private toWords(text: string): string[] {
-    return text
-      .toLowerCase()
-      .normalize('NFD')
-      .replace(/[̀-ͯ]/g, '')
-      .replace(/[^a-z0-9]+/g, ' ')
-      .split(' ')
-      .filter((w) => w.length > 1)
   }
 }

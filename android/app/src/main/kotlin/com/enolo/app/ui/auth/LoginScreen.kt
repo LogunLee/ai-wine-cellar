@@ -32,16 +32,15 @@ import androidx.compose.ui.unit.em
 import androidx.compose.ui.unit.sp
 import androidx.hilt.navigation.compose.hiltViewModel
 import coil.compose.AsyncImage
+import com.enolo.app.ui.theme.TokenDeepGreen1 as DarkGreen1
+import com.enolo.app.ui.theme.TokenDeepGreen2 as DarkGreen2
+import com.enolo.app.ui.theme.TokenDeepGreen3 as DarkGreen3
+import com.enolo.app.ui.theme.TokenInk as Ink
+import com.enolo.app.ui.theme.TokenInk3 as Ink3
+import com.enolo.app.ui.theme.TokenRed as ErrorRed
+import com.enolo.app.ui.theme.TokenTeal as Teal
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
-
-private val DarkGreen1 = Color(0xFF0A3D2E)
-private val DarkGreen2 = Color(0xFF0D2A1F)
-private val DarkGreen3 = Color(0xFF0B1E18)
-private val Teal       = Color(0xFF1C6F5E)
-private val ErrorRed   = Color(0xFFC23B36)
-private val Ink        = Color(0xFF1A1A1D)
-private val Ink3       = Color(0xFF787880)
 
 @Composable
 fun LoginScreen(

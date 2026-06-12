@@ -18,6 +18,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
@@ -47,23 +48,23 @@ import androidx.core.content.FileProvider
 import androidx.hilt.navigation.compose.hiltViewModel
 import coil.compose.AsyncImage
 import com.enolo.app.data.dto.CellarItemDto
+import com.enolo.app.ui.components.MerloticSheet
+import com.enolo.app.ui.components.SheetDragHandle
+import com.enolo.app.ui.theme.TokenFill as Fill
+import com.enolo.app.ui.theme.TokenGoldInk as GoldText
+import com.enolo.app.ui.theme.TokenGoldWash as GoldBg
+import com.enolo.app.ui.theme.TokenInk as Ink
+import com.enolo.app.ui.theme.TokenInk2 as Ink2
+import com.enolo.app.ui.theme.TokenInk3 as Ink3
+import com.enolo.app.ui.theme.TokenLine as Line
+import com.enolo.app.ui.theme.TokenRed as Red
+import com.enolo.app.ui.theme.TokenRedWash as RedBg
+import com.enolo.app.ui.theme.TokenTeal as Teal
+import com.enolo.app.ui.theme.TokenTealWash as TealWash
+import com.enolo.app.ui.theme.TokenYellow as Gold
 import com.enolo.app.util.Formatters
 import kotlinx.coroutines.delay
 import java.io.File
-
-// ─── Design tokens (updated for better contrast) ─────────────────────────────
-private val Ink      = Color(0xFF1A1A1D)
-private val Ink2     = Color(0xFF4A4A53)
-private val Ink3     = Color(0xFF787880)
-private val Fill     = Color(0xFFEEECE9)
-private val Line     = Color(0xFFD6D4CF)
-private val Teal     = Color(0xFF1C6F5E)
-private val TealWash = Color(0xFFE9F3EE)
-private val GoldBg   = Color(0xFFFBF1DC)
-private val GoldText = Color(0xFF8A6411)
-private val Gold     = Color(0xFFE2A21F)
-private val Red      = Color(0xFFC23B36)
-private val RedBg    = Color(0xFFFBECEB)
 
 // ─── Screen ──────────────────────────────────────────────────────────────────
 
@@ -476,7 +477,7 @@ private fun CellarSearchHeader(
         verticalAlignment = Alignment.CenterVertically,
     ) {
         IconButton(onClick = onBack) {
-            Icon(Icons.Default.ArrowBack, contentDescription = "Назад", tint = Ink)
+            Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Назад", tint = Ink)
         }
         BasicTextField(
             value         = value,
@@ -602,16 +603,9 @@ private fun CellarSortBottomSheet(
     ModalBottomSheet(
         onDismissRequest = onDismiss,
         containerColor   = Color.White,
-        scrimColor       = Color(0x51141419),
-        shape            = RoundedCornerShape(topStart = 22.dp, topEnd = 22.dp),
-        dragHandle = {
-            Box(
-                Modifier.padding(top = 8.dp, bottom = 4.dp)
-                    .size(width = 36.dp, height = 4.dp)
-                    .clip(RoundedCornerShape(2.dp))
-                    .background(Color(0xFFD6D6D4)),
-            )
-        },
+        scrimColor       = MerloticSheet.ScrimColor,
+        shape            = MerloticSheet.Shape,
+        dragHandle       = { SheetDragHandle() },
     ) {
         Column(Modifier.fillMaxWidth().padding(bottom = 24.dp).navigationBarsPadding()) {
             Text(
@@ -865,16 +859,9 @@ private fun CellarAddSheet(
     ModalBottomSheet(
         onDismissRequest = onDismiss,
         containerColor   = Color.White,
-        shape            = RoundedCornerShape(topStart = 22.dp, topEnd = 22.dp),
-        scrimColor       = Color(0x51141419),
-        dragHandle = {
-            Box(
-                Modifier.padding(top = 8.dp, bottom = 4.dp)
-                    .size(width = 36.dp, height = 4.dp)
-                    .clip(RoundedCornerShape(2.dp))
-                    .background(Color(0xFFD6D6D4)),
-            )
-        },
+        shape            = MerloticSheet.Shape,
+        scrimColor       = MerloticSheet.ScrimColor,
+        dragHandle       = { SheetDragHandle() },
     ) {
         Column(Modifier.fillMaxWidth()) {
             Row(
@@ -958,16 +945,9 @@ private fun CellarActionSheet(
     ModalBottomSheet(
         onDismissRequest = onDismiss,
         containerColor   = Color.White,
-        shape            = RoundedCornerShape(topStart = 22.dp, topEnd = 22.dp),
-        scrimColor       = Color(0x51141419),
-        dragHandle = {
-            Box(
-                Modifier.padding(top = 8.dp, bottom = 4.dp)
-                    .size(width = 36.dp, height = 4.dp)
-                    .clip(RoundedCornerShape(2.dp))
-                    .background(Color(0xFFD6D6D4)),
-            )
-        },
+        shape            = MerloticSheet.Shape,
+        scrimColor       = MerloticSheet.ScrimColor,
+        dragHandle       = { SheetDragHandle() },
     ) {
         Column(Modifier.fillMaxWidth()) {
             // Sheet header
@@ -1097,16 +1077,9 @@ private fun CellarFiltersSheet(
     ModalBottomSheet(
         onDismissRequest = onDismiss,
         containerColor   = Color.White,
-        shape            = RoundedCornerShape(topStart = 22.dp, topEnd = 22.dp),
-        scrimColor       = Color(0x51141419),
-        dragHandle = {
-            Box(
-                Modifier.padding(top = 8.dp, bottom = 4.dp)
-                    .size(width = 36.dp, height = 4.dp)
-                    .clip(RoundedCornerShape(2.dp))
-                    .background(Color(0xFFD6D6D4)),
-            )
-        },
+        shape            = MerloticSheet.Shape,
+        scrimColor       = MerloticSheet.ScrimColor,
+        dragHandle       = { SheetDragHandle() },
     ) {
         Column(Modifier.fillMaxWidth().heightIn(max = maxSheetH)) {
             Row(

@@ -1,22 +1,8 @@
 import { useState } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
-import {
-  Box,
-  Button,
-  Container,
-  Divider,
-  TextField,
-  Typography,
-  Paper,
-  InputAdornment,
-  IconButton,
-  Snackbar,
-  Alert,
-} from '@mui/material'
-import { Email, Lock, Visibility, VisibilityOff } from '@mui/icons-material'
-import GoogleColoredIcon from '../shared/ui/GoogleColoredIcon'
+import { Box, Button, Container, Divider, Typography, Paper } from '@mui/material'
+import { AuthLogoHeader, GoogleAuthButton, EmailField, PasswordField, AuthErrorSnackbar } from '../shared/ui/AuthKit'
 import { useAuthStore } from '../entities/auth/store'
-import { env } from '../shared/config/env'
 import vineyardBg from '../assets/vineyard-bg.png'
 
 const LoginPage = () => {
@@ -24,12 +10,7 @@ const LoginPage = () => {
   const { login, isLoading } = useAuthStore()
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
-  const [showPassword, setShowPassword] = useState(false)
   const [error, setError] = useState<string | null>(null)
-
-  const handleGoogleLogin = () => {
-    window.location.href = `${env.API_URL}/auth/google`
-  }
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
@@ -78,86 +59,14 @@ const LoginPage = () => {
             backdropFilter: 'blur(4px)',
           }}
         >
-          <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 1.5, mb: 4 }}>
-            <Box
-              sx={{
-                width: 48,
-                height: 48,
-                borderRadius: '50%',
-                overflow: 'hidden',
-                flexShrink: 0,
-              }}
-            >
-              <img src="/logo.png" alt="Merlotic" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
-            </Box>
-            <Typography variant="h3" sx={{ fontWeight: 700 }}>
-              Merlotic
-            </Typography>
-          </Box>
-
-          <Button
-            variant="outlined"
-            fullWidth
-            size="large"
-            startIcon={<GoogleColoredIcon />}
-            onClick={handleGoogleLogin}
-            sx={{ mb: 3 }}
-          >
-            Войти через Google
-          </Button>
+          <AuthLogoHeader />
+          <GoogleAuthButton label="Войти через Google" />
 
           <Divider sx={{ mb: 3 }}>или</Divider>
 
           <Box component="form" onSubmit={handleSubmit}>
-            <TextField
-              fullWidth
-              label="Email"
-              type="email"
-              autoComplete="email"
-              value={email}
-              onChange={(e) => setEmail(e.target.value)}
-              required
-              slotProps={{
-                input: {
-                  startAdornment: (
-                    <InputAdornment position="start">
-                      <Email sx={{ color: 'rgba(0, 0, 0, 0.26)' }} />
-                    </InputAdornment>
-                  ),
-                },
-              }}
-              sx={{ mb: 2 }}
-            />
-
-            <TextField
-              fullWidth
-              label="Пароль"
-              type={showPassword ? 'text' : 'password'}
-              value={password}
-              onChange={(e) => setPassword(e.target.value)}
-              required
-              slotProps={{
-                input: {
-                  startAdornment: (
-                    <InputAdornment position="start">
-                      <Lock sx={{ color: 'rgba(0, 0, 0, 0.26)' }} />
-                    </InputAdornment>
-                  ),
-                  endAdornment: (
-                    <InputAdornment position="end">
-                      <IconButton
-                        onClick={() => setShowPassword(!showPassword)}
-                        edge="end"
-                      >
-                        {showPassword ? <VisibilityOff sx={{ color: 'rgba(0, 0, 0, 0.26)' }} /> : <Visibility sx={{ color: 'rgba(0, 0, 0, 0.26)' }} />}
-                      </IconButton>
-                    </InputAdornment>
-                  ),
-                },
-              }}
-              sx={{ mb: 3 }}
-            />
-
+            <EmailField value={email} onChange={setEmail} />
+            <PasswordField value={password} onChange={setPassword} />
             <Button type="submit" variant="contained" fullWidth size="large" sx={{ mb: 2 }} disabled={isLoading}>
               {isLoading ? 'Вход...' : 'Войти'}
             </Button>
@@ -172,11 +81,7 @@ const LoginPage = () => {
         </Paper>
       </Container>
 
-      <Snackbar open={!!error} autoHideDuration={6000} onClose={() => setError(null)}>
-        <Alert severity="error" onClose={() => setError(null)}>
-          {error}
-        </Alert>
-      </Snackbar>
+      <AuthErrorSnackbar error={error} onClose={() => setError(null)} />
     </Box>
   )
 }

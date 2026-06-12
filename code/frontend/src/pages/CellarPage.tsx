@@ -3,12 +3,12 @@ import {
   Box, Container, Table, TableBody, TableCell, TableContainer,
   TableHead, TableRow, TableSortLabel, Paper, TextField,
   IconButton, Chip, Tooltip, Menu, MenuItem, Button,
-  FormControl, InputLabel, Select, OutlinedInput,
-  Checkbox, ListItemText, Typography, Dialog, DialogTitle, DialogContent, DialogContentText, DialogActions,
+  FormControl, InputLabel, Select,
+  Checkbox, Typography, Dialog, DialogTitle, DialogContent, DialogContentText, DialogActions,
   CircularProgress,
 } from '@mui/material'
 import {
-  EditRounded, SaveRounded, CancelRounded, DeleteRounded, SettingsRounded,
+  EditRounded, DeleteRounded, SettingsRounded,
   Search as SearchIcon, Clear,
   ContentCopyRounded, ChatRounded, ChatOutlined, Check, Cancel,
   PhotoCamera, CloudDownload, FileDownloadRounded,
@@ -142,7 +142,6 @@ const CellarPage = () => {
 
   const visibleCountRef = useRef(visibleCount)
   visibleCountRef.current = visibleCount
-  const sortedLengthRef = useRef(0)
 
   useEffect(() => {
     const handleScroll = () => {
@@ -407,7 +406,7 @@ const CellarPage = () => {
           placeholder="Поиск по названию и винтажу..."
           value={search}
           onChange={(e) => setSearch(e.target.value)}
-          InputProps={{ startAdornment: <SearchIcon fontSize="small" sx={{ mr: 1, color: 'text.secondary' }} /> }}
+          slotProps={{ input: { startAdornment: <SearchIcon fontSize="small" sx={{ mr: 1, color: 'text.secondary' }} /> } }}
           sx={{ minWidth: 200, '& .MuiOutlinedInput-root': { bgcolor: 'white', fontSize: '14px' } }}
         />
 
@@ -476,7 +475,7 @@ const CellarPage = () => {
         anchorEl={settingsAnchor}
         open={!!settingsAnchor}
         onClose={() => setSettingsAnchor(null)}
-        PaperProps={{ sx: { width: 280, maxHeight: 400 } }}
+        slotProps={{ paper: { sx: { width: 280, maxHeight: 400 } } }}
       >
         <Typography variant="subtitle2" sx={{ px: 2, py: 1, fontWeight: 600 }}>Столбцы</Typography>
         {COLS.map((col) => (

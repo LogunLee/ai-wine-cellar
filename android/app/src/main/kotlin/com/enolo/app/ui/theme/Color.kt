@@ -15,9 +15,17 @@ val TokenTealInk    = Color(0xFF155246)
 val TokenTealWash   = Color(0xFFE9F3EE)
 val TokenMintBorder = Color(0xFFD8EAE0)
 val TokenRed        = Color(0xFFC23B36)
+val TokenRedWash    = Color(0xFFFBECEB)
 val TokenMaroon     = Color(0xFF9E2C45)
 val TokenYellow     = Color(0xFFE2A21F)
+val TokenGoldWash   = Color(0xFFFBF1DC)
+val TokenGoldInk    = Color(0xFF8A6411)
 val TokenGreenDot   = Color(0xFF3FA66A)
+
+// ── Login gradient ───────────────────────────────────────────────────────────
+val TokenDeepGreen1 = Color(0xFF0A3D2E)
+val TokenDeepGreen2 = Color(0xFF0D2A1F)
+val TokenDeepGreen3 = Color(0xFF0B1E18)
 
 // ── Wine-type colours (Discounts / Cellar screens) ───────────────────────────
 val WineRed           = Color(0xFFfde8e8)

@@ -98,7 +98,7 @@ export interface CellarItem {
   grapes?: string[]
   quantity: number
   status: string
-  photoPath?: string
+  photoPath?: string | null
   createdAt: string
 }
 

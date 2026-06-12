@@ -5,7 +5,6 @@ import {
   Paper,
   Typography,
   Avatar,
-  Button,
   IconButton,
   Snackbar,
   Alert,
@@ -13,6 +12,7 @@ import {
 import { PhotoCamera, Delete } from '@mui/icons-material'
 import { useAuthStore } from '../entities/auth/store'
 import { env } from '../shared/config/env'
+import { api } from '../shared/api/client'
 
 const ProfilePage = () => {
   const { user, checkAuth } = useAuthStore()
@@ -46,17 +46,7 @@ const ProfilePage = () => {
       const formData = new FormData()
       formData.append('avatar', file)
 
-      const response = await fetch(`${env.API_URL}/user/avatar`, {
-        method: 'POST',
-        headers: {
-          Authorization: `Bearer ${localStorage.getItem('access_token')}`,
-        },
-        body: formData,
-      })
-
-      if (!response.ok) {
-        throw new Error('Ошибка загрузки аватара')
-      }
+      await api.post('/user/avatar', formData)
 
       setSuccess('Аватар обновлён')
       await checkAuth()
@@ -70,12 +60,7 @@ const ProfilePage = () => {
   const handleRemoveAvatar = async () => {
     setUploading(true)
     try {
-      await fetch(`${env.API_URL}/user/avatar`, {
-        method: 'DELETE',
-        headers: {
-          Authorization: `Bearer ${localStorage.getItem('access_token')}`,
-        },
-      })
+      await api.delete('/user/avatar')
       setSuccess('Аватар удалён')
       await checkAuth()
     } catch {

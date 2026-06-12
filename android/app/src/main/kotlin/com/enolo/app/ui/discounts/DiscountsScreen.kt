@@ -36,19 +36,19 @@ import androidx.compose.ui.unit.sp
 import androidx.hilt.navigation.compose.hiltViewModel
 import coil.compose.AsyncImage
 import com.enolo.app.data.dto.DiscountOfferDto
+import com.enolo.app.ui.components.MerloticSheet
+import com.enolo.app.ui.components.SheetDragHandle
+import com.enolo.app.ui.theme.TokenFill as Fill
+import com.enolo.app.ui.theme.TokenInk as Ink
+import com.enolo.app.ui.theme.TokenInk2 as Ink2
+import com.enolo.app.ui.theme.TokenInk3 as Ink3
+import com.enolo.app.ui.theme.TokenLine as Line
+import com.enolo.app.ui.theme.TokenMaroon as Maroon
+import com.enolo.app.ui.theme.TokenRed as Red
+import com.enolo.app.ui.theme.TokenTeal as Teal
+import com.enolo.app.ui.theme.TokenTealWash as TealWash
 import com.enolo.app.util.Formatters
 import kotlinx.coroutines.delay
-
-// ─── Design tokens (updated for better contrast) ─────────────────────────────
-private val Ink     = Color(0xFF1A1A1D)
-private val Ink2    = Color(0xFF4A4A53)
-private val Ink3    = Color(0xFF787880)
-private val Fill    = Color(0xFFEEECE9)
-private val Line    = Color(0xFFD6D4CF)
-private val Teal    = Color(0xFF1C6F5E)
-private val TealWash = Color(0xFFE9F3EE)
-private val Maroon  = Color(0xFF9E2C45)
-private val Red     = Color(0xFFC23B36)
 
 // ─── Screen ──────────────────────────────────────────────────────────────────
 
@@ -378,17 +378,9 @@ private fun SortBottomSheet(
     ModalBottomSheet(
         onDismissRequest = onDismiss,
         containerColor   = Color.White,
-        scrimColor       = Color(0x51141419),
-        shape            = RoundedCornerShape(topStart = 22.dp, topEnd = 22.dp),
-        dragHandle = {
-            Box(
-                Modifier
-                    .padding(top = 8.dp, bottom = 4.dp)
-                    .size(width = 36.dp, height = 4.dp)
-                    .clip(RoundedCornerShape(2.dp))
-                    .background(Color(0xFFD6D6D4)),
-            )
-        },
+        scrimColor       = MerloticSheet.ScrimColor,
+        shape            = MerloticSheet.Shape,
+        dragHandle       = { SheetDragHandle() },
     ) {
         Column(Modifier.fillMaxWidth().padding(bottom = 24.dp).navigationBarsPadding()) {
             Text(
