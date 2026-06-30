@@ -1,0 +1,24 @@
+{
+  "total_chunks": 15232,
+  "per_book": {
+    "anderson-wines-italy": 278,
+    "burgignon-wine-food": 188,
+    "champagne": 439,
+    "clarke-spravochnik": 579,
+    "kulikova-wine-russia": 159,
+    "mur-food-wine": 346,
+    "novy-svet": 774,
+    "oxford-companion-wine": 5457,
+    "piemonte-korneev": 1566,
+    "swn-prosto-2023": 782,
+    "vina-francii": 1160,
+    "vino-i-eda": 741,
+    "vino-italiano": 1180,
+    "wine-grapes": 1583
+  },
+  "skipped_image_pages": 229,
+  "avg_chars": 677,
+  "min_chars": 71,
+  "max_chars": 1667,
+  "source_pages": 3995
+}

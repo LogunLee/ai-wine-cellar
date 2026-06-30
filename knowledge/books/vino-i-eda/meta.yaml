@@ -1,0 +1,12 @@
+book_id: vino-i-eda
+title: "Вино и еда. Краткий курс для гурманов"
+series: "Simple Wine News (SWN)"
+publisher: "Эксмо / «Э»"
+year: 2015
+source_pdf: 'C:\Users\LoGun\YandexDisk\МОИ ДОКУМЕНТЫ\РАЗНОЕ\ЛИТЕРАТУРА\ВИНО\Вино и еда. Краткий курс для гурманов (Simple Wine News) - 2015.pdf'
+pdf_pages: 236  # PyMuPDF, рендер 300dpi завершён
+note: >
+  Книга 3 из 5 в QUEUE.md. Тема — сочетания вина и еды (фуд-пейринг).
+  Метод: гибрид Tesseract (rus+fra, PSM 1) как якорь + полный vision-проход по PNG 300dpi + сверка чисел/имён.
+  ВНИМАНИЕ: вероятна та же систематическая OCR-ошибка 3→5 (тот же издатель/серия/шрифт, что у vina-francii и novy-svet). Все числа сверять с PNG.
+  offset (printed_page vs png) уточнить по фолио на первых страницах.

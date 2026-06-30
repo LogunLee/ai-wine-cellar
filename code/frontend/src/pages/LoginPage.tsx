@@ -3,7 +3,7 @@ import { Link, useNavigate } from 'react-router-dom'
 import { Box, Button, Container, Divider, Typography, Paper } from '@mui/material'
 import { AuthLogoHeader, GoogleAuthButton, EmailField, PasswordField, AuthErrorSnackbar } from '../shared/ui/AuthKit'
 import { useAuthStore } from '../entities/auth/store'
-import vineyardBg from '../assets/vineyard-bg.png'
+import vineyardBg from '../assets/vineyard-bg.jpg'
 
 const LoginPage = () => {
   const navigate = useNavigate()

@@ -18,6 +18,18 @@ export interface ScraperResult {
   offers: RawScrapedOffer[]
 }
 
+/**
+ * Бросается, когда страница похожа на блокировку (пустая первая страница категории,
+ * HTTP 403/429, challenge), а НЕ на честный конец каталога. Оркестратор поймает её
+ * как ошибку: джоба → failed, старые данные и чекпойнты сохраняются (Фаза 1).
+ */
+export class BlockedError extends Error {
+  constructor(message: string) {
+    super(message)
+    this.name = 'BlockedError'
+  }
+}
+
 /** Persistent product-card characteristics (from wine_card cache). */
 export interface CachedCard {
   grapes: string[]
@@ -127,6 +139,60 @@ export abstract class BaseScraper {
     }
 
     return null
+  }
+
+  /**
+   * Жив ли вообще интернет (нейтральные always-up пробы). Отличает «сеть пропала»
+   * (надо ждать) от «магазин заблокирован» (сеть есть → это блок, ждать смысла нет).
+   */
+  protected async checkInternet(timeoutMs = 5000): Promise<boolean> {
+    const probes = ['https://www.gstatic.com/generate_204', 'https://1.1.1.1/']
+    for (const u of probes) {
+      try {
+        const ctrl = new AbortController()
+        const t = setTimeout(() => ctrl.abort(), timeoutMs)
+        const r = await fetch(u, { method: 'HEAD', signal: ctrl.signal }).finally(() => clearTimeout(t))
+        if (r.status === 204 || r.ok || r.status === 405 || r.status === 400) return true
+      } catch {
+        /* пробуем следующую пробу */
+      }
+    }
+    return false
+  }
+
+  /**
+   * Ждёт восстановления интернета (self-heal при пропаже сети / смене сети под VPN).
+   * Возвращает true, как только сеть появилась; false — если не дождались за окно.
+   * Чекпойнт переживает даже перезапуск, так что «не дождались» = просто отложить.
+   */
+  protected async waitForConnectivity(maxWaitMs = 600000): Promise<boolean> {
+    const start = Date.now()
+    let delay = 5000
+    if (await this.checkInternet()) return true
+    while (Date.now() - start < maxWaitMs) {
+      this.logger.warn(`Сеть недоступна — жду ${Math.round(delay / 1000)}с и проверяю снова`)
+      await new Promise((r) => setTimeout(r, delay))
+      if (await this.checkInternet()) {
+        this.logger.log('Сеть восстановилась — продолжаю')
+        return true
+      }
+      delay = Math.min(60000, Math.round(delay * 1.5))
+    }
+    return false
+  }
+
+  /** Стартовая страница категории: из чекпойнта (резюм) либо дефолт. */
+  protected async resolveStartPage(
+    checkpointCallbacks: ScraperCheckpointCallbacks | undefined,
+    category: string,
+    defaultPage = 1,
+  ): Promise<number> {
+    const cp = await checkpointCallbacks?.getCheckpoint?.(category)
+    if (cp && cp.pageNum > defaultPage) {
+      this.logger.log(`Resume: ${category} — продолжаю со страницы ${cp.pageNum}`)
+      return cp.pageNum
+    }
+    return defaultPage
   }
 
   /** Cache key for a product: stable externalId when present, else the URL. */

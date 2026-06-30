@@ -39,8 +39,120 @@ model User {
   credential         UserCredential?
   wineCellars        WineCellar[]
   deviceTokens       DeviceToken[]
+  aiProviderKeys     UserProviderKey[]
+  aiTaskSettings     UserTaskSetting[]
+  aiTrialUsages      AiTrialUsage[]
+  tastingNotes       TastingNote[]
+  chatSessions       ChatSession[]
 
   @@map("user")
+}
+
+// ─── AI-настройки пользователя ────────────────────────────────────────────────
+
+enum AiTaskScope {
+  USER // настраивается пользователем, вызывается его действием
+  SYSTEM // фоновые задачи приложения, всегда на ключах разработчика
+}
+
+/// Справочник провайдеров LLM. Наполняется разработчиком, для пользователей read-only.
+model AiProvider {
+  id              String            @id @default(uuid()) @db.Uuid
+  code            String            @unique // gemini | mistral | openrouter
+  name            String
+  baseUrl         String            @map("base_url") // фиксированный URL, пользователь не вводит
+  keyInstructions String            @map("key_instructions") // markdown: как выпустить ключ
+  keyConsoleUrl   String            @map("key_console_url")
+  freeTierNote    String?           @map("free_tier_note")
+  sortOrder       Int               @default(0) @map("sort_order")
+  isActive        Boolean           @default(true) @map("is_active")
+  createdAt       DateTime          @default(now()) @map("created_at")
+  updatedAt       DateTime          @updatedAt @map("updated_at")
+  models          AiProviderModel[]
+  userKeys        UserProviderKey[]
+
+  @@map("ai_provider")
+}
+
+/// Модели внутри провайдера (справочник).
+model AiProviderModel {
+  id           String            @id @default(uuid()) @db.Uuid
+  providerId   String            @map("provider_id") @db.Uuid
+  code         String // gemini-2.0-flash
+  name         String
+  capabilities String[] // ["text"] | ["text","vision"]
+  note         String?
+  isActive     Boolean           @default(true) @map("is_active")
+  provider     AiProvider        @relation(fields: [providerId], references: [id], onDelete: Cascade)
+  taskSettings UserTaskSetting[]
+
+  @@unique([providerId, code])
+  @@map("ai_provider_model")
+}
+
+/// Реестр AI-задач приложения. Наполняется разработчиком.
+model AiTask {
+  id                 String      @id @default(uuid()) @db.Uuid
+  code               String      @unique // label_recognition | text_search | wine_research | ...
+  name               String
+  description        String?
+  scope              AiTaskScope
+  requiredCapability String      @map("required_capability") // text | vision
+  defaultPrompt      String      @map("default_prompt")
+  promptVersion      Int         @default(1) @map("prompt_version")
+  promptEditable     Boolean     @default(false) @map("prompt_editable")
+  /// false — задаче не нужна LLM-модель (например, «внешнее исследование»: только промпт-шаблон)
+  requiresModel      Boolean     @default(true) @map("requires_model")
+  recommendedModel   String?     @map("recommended_model") // "provider/model-code" для подсказки в UI
+  trialLimit         Int         @default(10) @map("trial_limit")
+  sortOrder          Int         @default(0) @map("sort_order")
+  isActive           Boolean     @default(true) @map("is_active")
+
+  @@map("ai_task")
+}
+
+/// Ключ пользователя к провайдеру: один на провайдера, шифрован AES-256-GCM, write-only.
+model UserProviderKey {
+  id         String     @id @default(uuid()) @db.Uuid
+  userId     String     @map("user_id") @db.Uuid
+  providerId String     @map("provider_id") @db.Uuid
+  encKey     Bytes      @map("enc_key") // iv(12) + authTag(16) + ciphertext
+  keyLast4   String     @map("key_last4")
+  isValid    Boolean?   @map("is_valid")
+  checkedAt  DateTime?  @map("checked_at")
+  createdAt  DateTime   @default(now()) @map("created_at")
+  updatedAt  DateTime   @updatedAt @map("updated_at")
+  user       User       @relation(fields: [userId], references: [id], onDelete: Cascade)
+  provider   AiProvider @relation(fields: [providerId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, providerId])
+  @@map("user_provider_key")
+}
+
+/// Выбор модели (и опционально промпта) пользователем для конкретной задачи.
+model UserTaskSetting {
+  id           String           @id @default(uuid()) @db.Uuid
+  userId       String           @map("user_id") @db.Uuid
+  taskCode     String           @map("task_code")
+  modelId      String?          @map("model_id") @db.Uuid // null допустим для задач с requiresModel=false
+  customPrompt String?          @map("custom_prompt") // null = дефолтный промпт задачи
+  updatedAt    DateTime         @updatedAt @map("updated_at")
+  user         User             @relation(fields: [userId], references: [id], onDelete: Cascade)
+  model        AiProviderModel? @relation(fields: [modelId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, taskCode])
+  @@map("user_task_setting")
+}
+
+/// Счётчик пробных вызовов на ключах разработчика (per task).
+model AiTrialUsage {
+  userId   String @map("user_id") @db.Uuid
+  taskCode String @map("task_code")
+  used     Int    @default(0)
+  user     User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@id([userId, taskCode])
+  @@map("ai_trial_usage")
 }
 
 model DeviceToken {
@@ -208,7 +320,16 @@ model CellarItem {
   consumedAt    DateTime?        @map("consumed_at")
   purchasePrice Decimal?         @map("purchase_price") @db.Decimal(10, 2)
   currency      String?          @db.VarChar(3)
+  storageLocation String?        @map("storage_location")
   photoPath     String?          @map("photo_path")
+  /// Free-text wine info the user pastes from external sources (can be very large).
+  /// Primary signal for ai-search: chunked and embedded into wine_desc_chunk.
+  userDescription   String?      @map("user_description") @db.Text
+  /// Optional shorter description from the seller/source.
+  sellerDescription String?      @map("seller_description") @db.Text
+  /// Official producer tech-sheet text (grapes, vinification, aging). Chunked and
+  /// embedded into wine_desc_chunk so queries like "Nebbiolo aged 36+ months in oak" match.
+  producerDescription String?    @map("producer_description") @db.Text
   createdAt     DateTime         @default(now()) @map("created_at")
   updatedAt     DateTime         @updatedAt @map("updated_at")
   deletedAt     DateTime?        @map("deleted_at")
@@ -216,11 +337,81 @@ model CellarItem {
   cellar        WineCellar       @relation(fields: [cellarId], references: [id], onDelete: Cascade)
   wineVintage   WineVintage      @relation(fields: [wineVintageId], references: [id])
   notes         Note[]
+  tastingNotes  TastingNote[]
 
   @@index([cellarId, createdAt])
   @@index([cellarId, status])
   @@index([cellarId, wineVintageId])
   @@map("cellar_item")
+}
+
+/// Личная дегустационная заметка пользователя о конкретном вине из его погреба.
+/// «wine_id» из спецификации = cellarItemId (бутылка/карточка вина в погребе),
+/// откуда берутся название, тип, страна, регион, сорта и фото для списка и фильтров.
+/// Диалог с AI-сомелье (история чатов). Сообщения — в ChatMessage.
+model ChatSession {
+  id        String        @id @default(uuid()) @db.Uuid
+  userId    String        @map("user_id") @db.Uuid
+  title     String?
+  createdAt DateTime      @default(now()) @map("created_at")
+  updatedAt DateTime      @updatedAt @map("updated_at")
+  user      User          @relation(fields: [userId], references: [id], onDelete: Cascade)
+  messages  ChatMessage[]
+
+  @@index([userId, updatedAt])
+  @@map("chat_session")
+}
+
+/// Сообщение в диалоге с AI-сомелье. role: 'user'|'assistant'. mode: 'pogreb'|'consult'|'chat'.
+/// picks — карточки вин из погреба (JSON), sources — цитаты из литературы (JSON).
+model ChatMessage {
+  id        String      @id @default(uuid()) @db.Uuid
+  sessionId String      @map("session_id") @db.Uuid
+  role      String
+  mode      String?
+  content   String      @db.Text
+  picks     Json?
+  sources   Json?
+  createdAt DateTime    @default(now()) @map("created_at")
+  session   ChatSession @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+
+  @@index([sessionId, createdAt])
+  @@map("chat_message")
+}
+
+model TastingNote {
+  id                  String     @id @default(uuid()) @db.Uuid
+  userId              String     @map("user_id") @db.Uuid
+  /// Вино из погреба. Может быть null: заметка без вина (укажут позже) или вино введено вручную
+  /// (поля manual* ниже). Кейс: вина нет в погребе и нет интернета.
+  cellarItemId        String?    @map("cellar_item_id") @db.Uuid
+  // Вручную введённое вино (когда cellarItemId = null).
+  manualProducer      String?    @map("manual_producer")
+  manualName          String?    @map("manual_name")
+  manualVintageYear   Int?       @map("manual_vintage_year")
+  manualCountry       String?    @map("manual_country")
+  manualRegion        String?    @map("manual_region")
+  manualWineType      WineType?  @map("manual_wine_type")
+  vintage             Int?
+  tastingDate         DateTime   @map("tasting_date") @db.Date
+  /// Личная оценка 1.0–5.0 с шагом 0.1 (проверяется на уровне сервиса и CHECK-констрейнтом).
+  rating              Decimal    @db.Decimal(2, 1)
+  noteText            String?    @map("note_text") @db.Text
+  vivinoNoteText      String?    @map("vivino_note_text") @db.Text
+  vivinoNoteCreatedAt DateTime?  @map("vivino_note_created_at")
+  vivinoNoteUpdatedAt DateTime?  @map("vivino_note_updated_at")
+  place               String?
+  price               Decimal?   @db.Decimal(10, 2)
+  wouldBuyAgain       Boolean?   @map("would_buy_again")
+  createdAt           DateTime   @default(now()) @map("created_at")
+  updatedAt           DateTime   @updatedAt @map("updated_at")
+  deletedAt           DateTime?  @map("deleted_at")
+  user                User        @relation(fields: [userId], references: [id], onDelete: Cascade)
+  cellarItem          CellarItem? @relation(fields: [cellarItemId], references: [id], onDelete: Cascade)
+
+  @@index([userId, deletedAt, tastingDate, createdAt])
+  @@index([cellarItemId])
+  @@map("tasting_note")
 }
 
 model Note {

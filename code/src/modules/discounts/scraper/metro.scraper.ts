@@ -3,6 +3,7 @@ import { Browser, BrowserContext, Page, Response } from 'playwright'
 import { Store } from '@prisma/client'
 import {
   BaseScraper,
+  BlockedError,
   RawScrapedOffer,
   ScraperResult,
   ScraperCallbacks,
@@ -114,8 +115,8 @@ export class MetroScraper extends BaseScraper {
       : null
     const maxGood = this.maxGoodPerPage()
 
-    let pageNum = 1
     checkpointCallbacks?.startHeartbeat(path)
+    let pageNum = await this.resolveStartPage(checkpointCallbacks, path, 1)
 
     try {
       while (true) {
@@ -127,6 +128,9 @@ export class MetroScraper extends BaseScraper {
         const url = pageNum === 1 ? `${baseUrl}${path}` : `${baseUrl}${path}?page=${pageNum}`
         const loaded = await this.loadPageWithRetry(page, url)
         if (!loaded) {
+          if (pageNum === 1) {
+            throw new BlockedError(`[Phase 1] ${label}: первая страница не загрузилась — вероятна блокировка/VPN`)
+          }
           this.logger.error(`[Phase 1] Failed to load ${label} page ${pageNum}`)
           break
         }
@@ -180,6 +184,9 @@ export class MetroScraper extends BaseScraper {
         }, { base: baseUrl, sparkling: isSparkling })
 
         if (pageEntries.length === 0) {
+          if (pageNum === 1) {
+            throw new BlockedError(`[Phase 1] ${label}: пустая первая страница — вероятна блокировка/VPN (0 карточек)`)
+          }
           this.logger.log(`[Phase 1] No products on ${label} page ${pageNum}, stopping`)
           break
         }
@@ -388,6 +395,11 @@ export class MetroScraper extends BaseScraper {
       await page.goto(url, { waitUntil: 'domcontentloaded', timeout: 60000 })
     } catch (e) {
       this.logger.warn(`Navigation error: ${e}`)
+      // Сеть пропала/сменилась (VPN) — ждём восстановления и повторяем.
+      if (!(await this.checkInternet())) {
+        await this.waitForConnectivity()
+        return this.loadPageWithRetry(page, url, attempt + 1, maxAttempts)
+      }
     }
     if (this.gotHttpError) {
       const backoff = 30000 * Math.pow(2, Math.min(attempt - 1, 3))

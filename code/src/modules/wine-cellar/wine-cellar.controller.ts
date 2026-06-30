@@ -1,4 +1,4 @@
-import { Controller, Post, Get, Put, Delete, Body, UseGuards, Param, UploadedFile, UseInterceptors } from '@nestjs/common'
+import { Controller, Post, Get, Put, Delete, Body, Query, UseGuards, Param, UploadedFile, UseInterceptors } from '@nestjs/common'
 import { AuthGuard } from '@nestjs/passport'
 import { FileInterceptor } from '@nestjs/platform-express'
 import { CurrentUser } from '../../shared/auth/current-user.decorator'
@@ -14,6 +14,17 @@ export class WineCellarController {
   @Get('items')
   async getItems(@CurrentUser() user: AuthUser) {
     return this.wineCellarService.getCellarItems(user.userId)
+  }
+
+  /** Инкрементальная синхронизация погреба: изменения после серверного времени `since`. */
+  @Get('items/sync')
+  async syncItems(@CurrentUser() user: AuthUser, @Query('since') since?: string) {
+    return this.wineCellarService.syncCellarChanges(user.userId, since)
+  }
+
+  @Get('notes/count')
+  async getNotesCount(@CurrentUser() user: AuthUser) {
+    return this.wineCellarService.getNotesCount(user.userId)
   }
 
   @Post('add')
@@ -94,6 +105,33 @@ export class WineCellarController {
     @Body() body: { producer: string; name: string; vintageYear?: number },
   ) {
     return this.wineCellarService.fetchWinePhoto(user.userId, id, body)
+  }
+
+  @Post('enrich-preview')
+  async enrichPreview(@Body() body: { producer: string; name: string; vintageYear?: number }) {
+    return this.wineCellarService.enrichPreview(body)
+  }
+
+  @Get('photo-candidates')
+  async photoCandidates(
+    @Query('producer') producer: string,
+    @Query('name') name: string,
+    @Query('vintageYear') vintageYear?: string,
+  ) {
+    return this.wineCellarService.getPhotoCandidates({
+      producer: producer || '',
+      name: name || '',
+      vintageYear: vintageYear ? parseInt(vintageYear, 10) : undefined,
+    })
+  }
+
+  @Post(':id/photo-from-url')
+  async photoFromUrl(
+    @CurrentUser() user: AuthUser,
+    @Param('id') id: string,
+    @Body() body: { imageUrl: string },
+  ) {
+    return this.wineCellarService.setItemPhotoFromUrl(user.userId, id, body.imageUrl)
   }
 }
 

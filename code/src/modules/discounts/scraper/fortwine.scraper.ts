@@ -3,6 +3,7 @@ import { Browser, BrowserContext, Page, Response } from 'playwright'
 import { Store } from '@prisma/client'
 import {
   BaseScraper,
+  BlockedError,
   RawScrapedOffer,
   ScraperResult,
   ScraperCallbacks,
@@ -101,9 +102,9 @@ export class FortwineScraper extends BaseScraper {
       : null
     const maxGood = this.maxGoodPerPage()
 
-    let pageNum = 1
     const seenUrls = new Set<string>()
     checkpointCallbacks?.startHeartbeat(path)
+    let pageNum = await this.resolveStartPage(checkpointCallbacks, path, 1)
 
     try {
       while (true) {
@@ -115,7 +116,19 @@ export class FortwineScraper extends BaseScraper {
         const url = pageNum === 1 ? `${baseUrl}${path}` : `${baseUrl}${path}?PAGEN_1=${pageNum}`
         this.logger.log(`[Phase 1] Loading ${label} page ${pageNum}: ${url}`)
 
-        await page.goto(url, { waitUntil: 'domcontentloaded', timeout: 60000 })
+        const resp = await this.gotoWithRetry(page, url, { timeouts: [60000, 60000, 60000] })
+        if (!resp) {
+          // Навигация не удалась после ретраев: сеть пропала → ждём; иначе блок.
+          if (!(await this.checkInternet())) {
+            if (await this.waitForConnectivity()) continue
+            throw new Error(`[Phase 1] ${label}: нет сети на стр.${pageNum} — возобновлю с чекпойнта`)
+          }
+          if (pageNum === 1) {
+            throw new BlockedError(`[Phase 1] ${label}: первая страница не открылась — вероятна блокировка/VPN`)
+          }
+          this.logger.error(`[Phase 1] Failed to load ${label} page ${pageNum}`)
+          break
+        }
         await randomDelay(page, 5000, 3000)
         await humanScroll(page, 3)
         await randomDelay(page, 3000, 2000)
@@ -169,6 +182,9 @@ export class FortwineScraper extends BaseScraper {
         }, { base: baseUrl, sparkling: isSparkling })
 
         if (pageEntries.length === 0) {
+          if (pageNum === 1) {
+            throw new BlockedError(`[Phase 1] ${label}: пустая первая страница — вероятна блокировка/VPN (0 карточек)`)
+          }
           this.logger.log(`[Phase 1] No products on ${label} page ${pageNum}, stopping`)
           break
         }

@@ -1,6 +1,6 @@
 import { Injectable, Logger } from '@nestjs/common'
 import { ConfigService } from '@nestjs/config'
-import { AiModelsService } from '../ai-models/ai-models.service'
+import { AiRouterService } from '../ai-settings/ai-router.service'
 
 export interface WineResearchInput {
   wineName: string
@@ -87,10 +87,10 @@ export class WineResearchService {
 
   constructor(
     private readonly configService: ConfigService,
-    private readonly aiModelsService: AiModelsService,
+    private readonly aiRouter: AiRouterService,
   ) {}
 
-  async researchWine(input: WineResearchInput): Promise<WineResearchResult> {
+  async researchWine(userId: string, input: WineResearchInput): Promise<WineResearchResult> {
     const startTime = Date.now()
     const notes: string[] = []
 
@@ -98,7 +98,7 @@ export class WineResearchService {
       const queries = this.generateSearchQueries(input)
       this.logger.log(`Generated ${queries.length} search queries`)
 
-      const allUrls = await this.searchJina(queries, startTime)
+      const allUrls = await this.searchJina(queries, startTime, notes)
       if (allUrls.length === 0) {
         notes.push('Jina Search не вернула результатов')
         return this.emptyResult(notes)
@@ -120,7 +120,7 @@ export class WineResearchService {
       const context = this.buildContext(sourceTexts)
       const prompt = this.buildPrompt(input, context)
 
-      const llmResult = await this.callLLM(prompt)
+      const llmResult = await this.callLLM(userId, prompt)
       if (!llmResult) {
         notes.push('LLM не вернула валидный ответ')
         return this.emptyResult(notes)
@@ -200,9 +200,18 @@ export class WineResearchService {
   private async searchJina(
     queries: string[],
     startTime: number,
+    notes?: string[],
   ): Promise<JinaSearchResult[]> {
     const allResults: JinaSearchResult[] = []
     const apiKey = this.configService.get<string>('JINA_API_KEY')
+
+    if (!apiKey) {
+      notes?.push('JINA_API_KEY не настроен на сервере — поиск источников недоступен')
+      this.logger.error('JINA_API_KEY is not configured')
+      return []
+    }
+
+    const failStatuses = new Set<number>()
 
     for (const query of queries) {
       if (Date.now() - startTime > TOTAL_TIMEOUT_MS) {
@@ -229,6 +238,7 @@ export class WineResearchService {
         clearTimeout(timeoutId)
 
         if (!response.ok) {
+          failStatuses.add(response.status)
           this.logger.warn(`Jina Search returned ${response.status} for query: ${query}`)
           continue
         }
@@ -240,6 +250,15 @@ export class WineResearchService {
       } catch (error) {
         this.logger.warn(`Jina Search failed for query "${query}": ${error.message}`)
       }
+    }
+
+    if (allResults.length === 0 && failStatuses.size > 0) {
+      const statuses = [...failStatuses].join(', ')
+      notes?.push(
+        failStatuses.has(401) || failStatuses.has(402)
+          ? `Jina Search отклонила ключ (HTTP ${statuses}) — проверьте JINA_API_KEY и его баланс`
+          : `Jina Search отвечала ошибками (HTTP ${statuses})`,
+      )
     }
 
     return allResults
@@ -498,12 +517,11 @@ export class WineResearchService {
 }`
   }
 
-  private async callLLM(prompt: string): Promise<string | null> {
+  private async callLLM(userId: string, prompt: string): Promise<string | null> {
+    const resolved = await this.aiRouter.resolveForUser(userId, 'wine_research')
+
     try {
-      const model = await this.aiModelsService.getDefaultForPurpose('TEXT_PROCESSING')
-      const baseUrl = model.baseUrl || 'https://api.mistral.ai/v1'
-      const apiKey = model.apiKey
-      const provider = model.provider?.toLowerCase() || ''
+      const systemPrompt = resolved.promptOverride || 'Ты эксперт по винам. Отвечай только валидным JSON.'
 
       const controller = new AbortController()
       const timeoutId = setTimeout(() => controller.abort(), LLM_TIMEOUT_MS)
@@ -511,9 +529,9 @@ export class WineResearchService {
       let url: string
       let options: RequestInit
 
-      if (provider === 'google') {
-        const modelName = model.name.startsWith('models/') ? model.name : `models/${model.name}`
-        url = `${baseUrl}/${modelName}:generateContent?key=${apiKey}`
+      if (!resolved.openAiCompatible) {
+        const modelName = resolved.modelCode.startsWith('models/') ? resolved.modelCode : `models/${resolved.modelCode}`
+        url = `${resolved.baseUrl}/${modelName}:generateContent?key=${resolved.apiKey}`
         options = {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
@@ -521,7 +539,7 @@ export class WineResearchService {
             contents: [
               {
                 role: 'user',
-                parts: [{ text: `Ты эксперт по винам. Отвечай только валидным JSON.\n\n${prompt}` }],
+                parts: [{ text: `${systemPrompt}\n\n${prompt}` }],
               },
             ],
             generationConfig: { temperature: 0.1 },
@@ -529,17 +547,17 @@ export class WineResearchService {
           signal: controller.signal,
         }
       } else {
-        url = `${baseUrl}/chat/completions`
+        url = `${resolved.baseUrl}/chat/completions`
         options = {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json',
-            Authorization: `Bearer ${apiKey}`,
+            Authorization: `Bearer ${resolved.apiKey}`,
           },
           body: JSON.stringify({
-            model: model.name,
+            model: resolved.modelCode,
             messages: [
-              { role: 'system', content: 'Ты эксперт по винам. Отвечай только валидным JSON.' },
+              { role: 'system', content: systemPrompt },
               { role: 'user', content: prompt },
             ],
             temperature: 0.1,
@@ -552,17 +570,20 @@ export class WineResearchService {
       clearTimeout(timeoutId)
 
       if (!response.ok) {
-        const errorText = await response.text()
-        this.logger.error(`LLM API error: ${response.status} - ${errorText}`)
+        this.logger.error(`LLM API error: ${response.status}`)
         return null
       }
 
       const data = await response.json()
 
-      if (provider === 'google') {
-        return data.candidates?.[0]?.content?.parts?.[0]?.text || null
+      const content = resolved.openAiCompatible
+        ? data.choices?.[0]?.message?.content || null
+        : data.candidates?.[0]?.content?.parts?.[0]?.text || null
+
+      if (content && resolved.source === 'trial') {
+        await this.aiRouter.commitTrialUse(userId, 'wine_research')
       }
-      return data.choices?.[0]?.message?.content || null
+      return content
     } catch (error) {
       this.logger.error(`LLM call failed: ${error.message}`)
       return null

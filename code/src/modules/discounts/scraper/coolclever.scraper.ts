@@ -3,6 +3,7 @@ import { Browser, Page, BrowserContext, Response } from 'playwright'
 import { Store } from '@prisma/client'
 import {
   BaseScraper,
+  BlockedError,
   RawScrapedOffer,
   ScraperResult,
   ScraperCallbacks,
@@ -222,8 +223,8 @@ export class CoolCleverScraper extends BaseScraper {
       : null
     const maxGood = this.maxGoodPerPage()
 
-    let pageNum = 1
     checkpointCallbacks?.startHeartbeat(categoryKey)
+    let pageNum = await this.resolveStartPage(checkpointCallbacks, categoryKey, 1)
 
     try {
       while (true) {
@@ -243,6 +244,10 @@ export class CoolCleverScraper extends BaseScraper {
         const loaded = await this.loadPageWithRetry(page, url)
 
         if (!loaded) {
+          // Не загрузилось после ретраев: на первой странице это блок (не пустой каталог).
+          if (pageNum === 1) {
+            throw new BlockedError(`[Phase 1] ${label}: первая страница не загрузилась — вероятна блокировка/VPN (429/403)`)
+          }
           this.logger.error(`[Phase 1] Failed to load ${label} page ${pageNum} after retries`)
           break
         }
@@ -333,6 +338,10 @@ export class CoolCleverScraper extends BaseScraper {
         const totalCards = entries.length + unavailableCount
 
         if (totalCards === 0) {
+          // Пустая ПЕРВАЯ страница = блок/VPN, а не пустой каталог.
+          if (pageNum === 1) {
+            throw new BlockedError(`[Phase 1] ${label}: пустая первая страница — вероятна блокировка/VPN (0 карточек)`)
+          }
           this.logger.log(`[Phase 1] No products on ${label} page ${pageNum}, stopping`)
           break
         }
@@ -677,6 +686,11 @@ export class CoolCleverScraper extends BaseScraper {
       await page.goto(url, { waitUntil: 'domcontentloaded', timeout: 60000 })
     } catch (e) {
       this.logger.warn(`Navigation error: ${e}`)
+      // Сеть пропала/сменилась (VPN) — ждём восстановления и повторяем ту же страницу.
+      if (!(await this.checkInternet())) {
+        await this.waitForConnectivity()
+        return this.loadPageWithRetry(page, url, attempt + 1, maxAttempts)
+      }
     }
 
     if (this.got429 || this.got403) {

@@ -1,19 +1,57 @@
 import { Injectable, NotFoundException } from '@nestjs/common'
 import { PrismaService } from '../../shared/database/prisma.service'
-import { WineType } from '@prisma/client'
+import { Prisma, WineType } from '@prisma/client'
 import * as fs from 'fs'
 import * as path from 'path'
 import { VivinoService } from '../vivino/vivino.service'
 import { WineCriticService } from '../wine-critic/wine-critic.service'
+import { KbIndexService } from '../cellar-ai-search/kb-index.service'
+
+/** Включение связей вина для карточки погреба (серия + винтаж + страна). */
+const CELLAR_ITEM_INCLUDE = {
+  wineVintage: { include: { series: { include: { country: true } } } },
+} satisfies Prisma.CellarItemInclude
+
+type CellarItemWithWine = Prisma.CellarItemGetPayload<{ include: typeof CELLAR_ITEM_INCLUDE }>
+
+/** Браузерный User-Agent — без него многие источники отдают антибот-страницу (HTML) вместо картинки. */
+const BROWSER_UA =
+  'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0 Safari/537.36'
+
+/**
+ * Определяет расширение по «магическим байтам». Возвращает null, если буфер — НЕ изображение
+ * (например, HTML-страница антибота, сохранённая под видом .jpg). Это главный предохранитель:
+ * раньше его не было, и в uploads попадал HTML.
+ */
+function sniffImageExt(buf: Buffer): string | null {
+  if (buf.length < 12) return null
+  // JPEG: FF D8 FF
+  if (buf[0] === 0xff && buf[1] === 0xd8 && buf[2] === 0xff) return '.jpg'
+  // PNG: 89 50 4E 47
+  if (buf[0] === 0x89 && buf[1] === 0x50 && buf[2] === 0x4e && buf[3] === 0x47) return '.png'
+  // GIF: 47 49 46 38
+  if (buf[0] === 0x47 && buf[1] === 0x49 && buf[2] === 0x46 && buf[3] === 0x38) return '.gif'
+  // WEBP: "RIFF"...."WEBP"
+  if (buf.toString('ascii', 0, 4) === 'RIFF' && buf.toString('ascii', 8, 12) === 'WEBP') return '.webp'
+  return null
+}
 
 export interface AddWineToCellarDto {
   producer: string
   name: string
   vintageYear?: number
   region?: string
+  appellation?: string | null
   country?: string
   wineType?: string
   quantity: number
+  grapes?: string[]
+  userDescription?: string | null
+  sellerDescription?: string | null
+  producerDescription?: string | null
+  purchasePrice?: number | null
+  currency?: string | null
+  storageLocation?: string | null
 }
 
 @Injectable()
@@ -22,7 +60,17 @@ export class WineCellarService {
     private readonly prisma: PrismaService,
     private readonly vivino: VivinoService,
     private readonly critic: WineCriticService,
+    private readonly kbIndex: KbIndexService,
   ) {}
+
+  /**
+   * Fire-and-forget re-embedding of a bottle's descriptions into wine_desc_chunk.
+   * Best-effort: a no-op when Voyage/pgvector are not active, and never blocks the
+   * API response. EmbeddingService retries on Voyage 429 internally.
+   */
+  private reindexDescriptions(cellarItemId: string): void {
+    this.kbIndex.indexCellarItemDescriptions(cellarItemId).catch(() => undefined)
+  }
 
   async getCountries() {
     return this.prisma.country.findMany({ orderBy: { name: 'asc' } })
@@ -37,39 +85,74 @@ export class WineCellarService {
 
     const items = await this.prisma.cellarItem.findMany({
       where: { cellarId: cellar.id, status: 'IN_CELLAR', deletedAt: null },
-      include: {
-        wineVintage: {
-          include: {
-            series: {
-              include: { country: true },
-            },
-          },
-        },
-      },
+      include: CELLAR_ITEM_INCLUDE,
       orderBy: { createdAt: 'desc' },
     })
 
-    return items.map((item) => {
-      const series = item.wineVintage.series
-      const composition = item.wineVintage.composition as string[] | null
+    return items.map((item) => this.mapCellarItem(item))
+  }
+
+  /** Маппинг строки погреба в API-форму (используется списком и инкрементальной синхронизацией). */
+  private mapCellarItem(item: CellarItemWithWine) {
+    const series = item.wineVintage.series
+    const composition = item.wineVintage.composition as string[] | null
+    return {
+      id: item.id,
+      producer: series.producer,
+      name: series.name,
+      vintageYear: item.wineVintage.vintageYear,
+      region: series.region,
+      appellation: series.appellation,
+      country: series.country?.name,
+      countryIso2: series.country?.iso2,
+      wineType: series.wineType,
+      grapes: Array.isArray(composition) ? composition : null,
+      quantity: item.quantity,
+      status: item.status,
+      photoPath: item.photoPath,
+      purchasePrice: item.purchasePrice ? Number(item.purchasePrice) : null,
+      currency: item.currency ?? null,
+      storageLocation: item.storageLocation ?? null,
+      userDescription: item.userDescription ?? null,
+      sellerDescription: item.sellerDescription ?? null,
+      producerDescription: item.producerDescription ?? null,
+      createdAt: item.createdAt,
+      vivinoUrl: series.vivinoUrl ?? null,
+      wineSearcherUrl: series.wineSearcherUrl ?? null,
+      criticScores: (series.criticScores as Record<string, number> | null) ?? null,
+    }
+  }
+
+  /**
+   * Инкрементальная синхронизация погреба: изменения после серверного времени `since`.
+   * Возвращает upsert-список (changed) и id выбывших бутылок (deletedIds — удалённые/списанные),
+   * плюс текущее серверное время. Без `since` — полная выгрузка.
+   */
+  async syncCellarChanges(userId: string, since?: string) {
+    const serverTime = new Date().toISOString()
+    const cellar = await this.prisma.wineCellar.findFirst({ where: { ownerId: userId } })
+    if (!cellar) return { serverTime, changed: [], deletedIds: [] as string[] }
+
+    const sinceDate = since ? new Date(since) : null
+    if (sinceDate && !Number.isNaN(sinceDate.getTime())) {
+      const rows = await this.prisma.cellarItem.findMany({
+        where: { cellarId: cellar.id, updatedAt: { gt: sinceDate } },
+        include: CELLAR_ITEM_INCLUDE,
+      })
+      const isActive = (r: CellarItemWithWine) => r.status === 'IN_CELLAR' && !r.deletedAt
       return {
-        id: item.id,
-        producer: series.producer,
-        name: series.name,
-        vintageYear: item.wineVintage.vintageYear,
-        region: series.region,
-        country: series.country?.name,
-        countryIso2: series.country?.iso2,
-        wineType: series.wineType,
-        grapes: Array.isArray(composition) ? composition : null,
-        quantity: item.quantity,
-        status: item.status,
-        createdAt: item.createdAt,
-        vivinoUrl: series.vivinoUrl ?? null,
-        wineSearcherUrl: series.wineSearcherUrl ?? null,
-        criticScores: (series.criticScores as Record<string, number> | null) ?? null,
+        serverTime,
+        changed: rows.filter(isActive).map((r) => this.mapCellarItem(r)),
+        deletedIds: rows.filter((r) => !isActive(r)).map((r) => r.id),
       }
+    }
+    // Полная выгрузка (первый синк).
+    const rows = await this.prisma.cellarItem.findMany({
+      where: { cellarId: cellar.id, status: 'IN_CELLAR', deletedAt: null },
+      include: CELLAR_ITEM_INCLUDE,
+      orderBy: { createdAt: 'desc' },
     })
+    return { serverTime, changed: rows.map((r) => this.mapCellarItem(r)), deletedIds: [] as string[] }
   }
 
   async addToCellar(userId: string, dto: AddWineToCellarDto) {
@@ -98,17 +181,30 @@ export class WineCellarService {
         data: {
           seriesId: series.id,
           vintageYear: dto.vintageYear || null,
+          composition: dto.grapes && dto.grapes.length > 0 ? dto.grapes : undefined,
         },
       })
     }
 
-    return this.prisma.cellarItem.create({
+    const created = await this.prisma.cellarItem.create({
       data: {
         cellarId: cellar.id,
         wineVintageId: vintage.id,
         quantity: dto.quantity,
+        userDescription: dto.userDescription ?? null,
+        sellerDescription: dto.sellerDescription ?? null,
+        producerDescription: dto.producerDescription ?? null,
+        purchasePrice: dto.purchasePrice ?? null,
+        currency: dto.currency ?? null,
+        storageLocation: dto.storageLocation ?? null,
       },
     })
+
+    // Описание могло прийти прямо при добавлении бутылки → сразу строим векторы.
+    if (dto.userDescription?.trim() || dto.sellerDescription?.trim() || dto.producerDescription?.trim()) {
+      this.reindexDescriptions(created.id)
+    }
+    return created
   }
 
   async updateCellarItem(userId: string, itemId: string, dto: Partial<AddWineToCellarDto> & { quantity?: number }) {
@@ -151,6 +247,15 @@ export class WineCellarService {
       })
     }
 
+    // Описания могут редактироваться через общий PUT → пишем и переиндексируем векторы.
+    if (dto.userDescription !== undefined || dto.sellerDescription !== undefined) {
+      const descData: { userDescription?: string | null; sellerDescription?: string | null } = {}
+      if (dto.userDescription !== undefined) descData.userDescription = dto.userDescription
+      if (dto.sellerDescription !== undefined) descData.sellerDescription = dto.sellerDescription
+      await this.prisma.cellarItem.update({ where: { id: itemId }, data: descData })
+      this.reindexDescriptions(itemId)
+    }
+
     const updated = await this.prisma.cellarItem.findUnique({
       where: { id: itemId },
       include: { wineVintage: { include: { series: { include: { country: true } } } } },
@@ -176,6 +281,18 @@ export class WineCellarService {
       where: { id: item.id },
       data: { deletedAt: new Date() },
     })
+
+    // Бутылка удалена → убираем её векторы, чтобы не всплывала в семантическом поиске.
+    await this.kbIndex.removeCellarItemDescriptions(item.id).catch(() => undefined)
+  }
+
+  async getNotesCount(userId: string): Promise<{ count: number }> {
+    const cellar = await this.prisma.wineCellar.findFirst({ where: { ownerId: userId } })
+    if (!cellar) return { count: 0 }
+    const count = await this.prisma.note.count({
+      where: { cellarId: cellar.id, noteType: 'MANUAL', deletedAt: null },
+    })
+    return { count }
   }
 
   async getCellarNote(userId: string, itemId: string) {
@@ -224,9 +341,75 @@ export class WineCellarService {
     const imageUrl = await this.searchWineImage(query)
     if (!imageUrl) return { photoPath: null }
 
-    const response = await fetch(imageUrl)
+    const response = await fetch(imageUrl, { headers: { 'User-Agent': BROWSER_UA, 'Accept': 'image/*' } })
     const buffer = Buffer.from(await response.arrayBuffer())
-    const ext = imageUrl.includes('.webp') ? '.webp' : imageUrl.includes('.png') ? '.png' : '.jpg'
+    const ext = sniffImageExt(buffer)
+    if (!ext) return { photoPath: null }
+    return this.persistItemPhoto(cellar.id, itemId, buffer, ext)
+  }
+
+  /**
+   * Предпросмотр обогащения для карточки распознанного вина (без записи в БД):
+   * ссылка Vivino + ссылка Wine-Searcher + оценки критиков.
+   */
+  async enrichPreview(dto: { producer: string; name: string; vintageYear?: number }) {
+    const [vivinoUrl, ws] = await Promise.all([
+      this.vivino.findWineUrl(dto.producer, dto.name, dto.vintageYear),
+      this.critic.findWine(dto.producer, dto.name, dto.vintageYear),
+    ])
+    return {
+      vivinoUrl: vivinoUrl ?? null,
+      wineSearcherUrl: ws?.url ?? null,
+      criticScores: ws && Object.keys(ws.scores).length > 0 ? ws.scores : null,
+    }
+  }
+
+  /** Топ картинок по запросу вина — для ручного выбора фото бутылки. */
+  async getPhotoCandidates(wine: { producer: string; name: string; vintageYear?: number }) {
+    // Каскад от точного запроса к широкому: первый непустой результат побеждает
+    const year = wine.vintageYear || ''
+    const queries = [
+      `${wine.producer} ${wine.name} ${year} wine bottle`.replace(/\s+/g, ' ').trim(),
+      `${wine.producer} ${wine.name} wine label`.replace(/\s+/g, ' ').trim(),
+      `${wine.name} ${year} wine`.replace(/\s+/g, ' ').trim(),
+    ].filter((q, i, arr) => q.length > 8 && arr.indexOf(q) === i)
+
+    for (const query of queries) {
+      const images = await this.searchWineImages(query, 10)
+      if (images.length > 0) return { images }
+    }
+    return { images: [] }
+  }
+
+  /** Сохраняет к бутылке фото, выбранное пользователем из кандидатов. */
+  async setItemPhotoFromUrl(userId: string, itemId: string, imageUrl: string) {
+    const { cellar } = await this.getOwnedItem(userId, itemId)
+
+    let parsed: URL
+    try {
+      parsed = new URL(imageUrl)
+    } catch {
+      throw new NotFoundException('Некорректный URL картинки')
+    }
+    const host = parsed.hostname
+    const isPrivate =
+      parsed.protocol !== 'https:' ||
+      host === 'localhost' ||
+      /^\d+\.\d+\.\d+\.\d+$/.test(host) ||
+      host.endsWith('.local')
+    if (isPrivate) throw new NotFoundException('Недопустимый URL картинки')
+
+    const response = await fetch(imageUrl, {
+      signal: AbortSignal.timeout(15_000),
+      headers: { 'User-Agent': BROWSER_UA, 'Accept': 'image/*' },
+    })
+    if (!response.ok) throw new NotFoundException('Не удалось скачать картинку')
+    const buffer = Buffer.from(await response.arrayBuffer())
+
+    // Проверяем СОДЕРЖИМОЕ, а не заголовок/расширение: если это не изображение
+    // (HTML антибота, пустой ответ и т.п.) — отказываем, чтобы мусор не попал в uploads.
+    const ext = sniffImageExt(buffer)
+    if (!ext) throw new NotFoundException('Скачанный файл не является изображением')
     return this.persistItemPhoto(cellar.id, itemId, buffer, ext)
   }
 
@@ -316,6 +499,7 @@ export class WineCellarService {
         name: dto.name,
         countryId,
         region: dto.region || null,
+        appellation: dto.appellation || null,
         wineType,
       },
       include: { country: true },
@@ -373,9 +557,14 @@ export class WineCellarService {
   }
 
   private async searchWineImage(query: string): Promise<string | null> {
+    const images = await this.searchWineImages(query, 1)
+    return images[0] ?? null
+  }
+
+  private async searchWineImages(query: string, limit: number): Promise<string[]> {
     try {
       const jinaKey = process.env.JINA_API_KEY
-      if (!jinaKey) return null
+      if (!jinaKey) return []
 
       const searchUrl = `https://s.jina.ai/${encodeURIComponent(query)}`
       const response = await fetch(searchUrl, {
@@ -384,14 +573,18 @@ export class WineCellarService {
           'X-Return-Format': 'image',
           'Accept': 'application/json',
         },
+        signal: AbortSignal.timeout(20_000),
       })
 
-      if (!response.ok) return null
+      if (!response.ok) return []
 
       const data = await response.json()
-      return data.data?.length > 0 ? data.data[0].url : null
+      const urls: string[] = (data.data ?? [])
+        .map((d: any) => d?.url)
+        .filter((u: unknown): u is string => typeof u === 'string' && u.startsWith('http'))
+      return urls.slice(0, limit)
     } catch {
-      return null
+      return []
     }
   }
 

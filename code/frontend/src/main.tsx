@@ -8,7 +8,8 @@ import LoginPage from './pages/LoginPage'
 import RegisterPage from './pages/RegisterPage'
 import AuthCallbackPage from './pages/AuthCallbackPage'
 import CellarPage from './pages/CellarPage'
-import ProfilePage from './pages/ProfilePage'
+import NotesPage from './pages/NotesPage'
+import SettingsPage from './pages/SettingsPage'
 import DiscountsPage from './pages/DiscountsPage'
 import FavoritesPage from './pages/FavoritesPage'
 import './index.css'
@@ -85,6 +86,10 @@ const router = createBrowserRouter([
             element: <CellarPage />,
           },
           {
+            path: 'notes',
+            element: <NotesPage />,
+          },
+          {
             path: 'discounts',
             element: <DiscountsPage />,
           },
@@ -93,8 +98,12 @@ const router = createBrowserRouter([
             element: <FavoritesPage />,
           },
           {
+            path: 'settings',
+            element: <SettingsPage />,
+          },
+          {
             path: 'profile',
-            element: <ProfilePage />,
+            element: <Navigate to="/settings" replace />,
           },
         ],
       },

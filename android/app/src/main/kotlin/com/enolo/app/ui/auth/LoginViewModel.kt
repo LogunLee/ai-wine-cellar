@@ -42,7 +42,12 @@ class LoginViewModel @Inject constructor(
         viewModelScope.launch {
             _uiState.value = _uiState.value.copy(isLoading = true, error = null)
             when (val res = authRepository.login(s.serverUrl, s.email, s.password)) {
-                is ApiResult.Success -> onSuccess()
+                // isLoading сбрасываем и при успехе: ViewModel переживает logout,
+                // иначе после выхода кнопка «Войти» останется с вечным спиннером
+                is ApiResult.Success -> {
+                    _uiState.value = _uiState.value.copy(isLoading = false, password = "")
+                    onSuccess()
+                }
                 is ApiResult.Error -> _uiState.value = _uiState.value.copy(
                     isLoading = false,
                     error = res.message ?: "Ошибка входа (${res.code})"

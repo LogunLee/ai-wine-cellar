@@ -2,51 +2,67 @@ package com.enolo.app.ui.home
 
 import android.Manifest
 import android.content.Context
+import android.content.Intent
 import android.content.pm.PackageManager
 import android.net.Uri
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.BorderStroke
+import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.grid.GridCells
+import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material3.pulltorefresh.PullToRefreshBox
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.ArrowForward
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
+import androidx.compose.ui.BiasAlignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.geometry.isSpecified
+import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.platform.LocalUriHandler
 import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.text.style.TextDecoration
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.core.content.ContextCompat
-import androidx.core.content.FileProvider
 import androidx.hilt.navigation.compose.hiltViewModel
 import coil.compose.AsyncImage
+import coil.compose.rememberAsyncImagePainter
+import com.enolo.app.R
 import com.enolo.app.data.dto.CellarItemDto
 import com.enolo.app.data.dto.DiscountOfferDto
 import com.enolo.app.data.dto.WineRecognitionResult
+import com.enolo.app.ui.components.MerloticSearchBar
+import com.enolo.app.ui.components.MerloticTopBar
+import com.enolo.app.ui.components.SearchBarActionButton
 import com.enolo.app.ui.theme.*
 import com.enolo.app.util.Formatters
-import java.io.File
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun HomeScreen(
-    onNavigateToDiscounts: () -> Unit = {},
-    onNavigateToCellar:    () -> Unit = {},
+    onNavigateToDiscounts:   () -> Unit = {},
+    onNavigateToCellar:      () -> Unit = {},
+    onNavigateToNotes:       () -> Unit = {},
+    onNavigateToSmartSearch: () -> Unit = {},
+    startAction: String? = null,
+    onConsumeStartAction: () -> Unit = {},
     viewModel: HomeViewModel = hiltViewModel()
 ) {
     val query         by viewModel.query.collectAsState()
@@ -55,50 +71,74 @@ fun HomeScreen(
     val imageLoading  by viewModel.imageLoading.collectAsState()
     val topDeals      by viewModel.topDeals.collectAsState()
     val dealsLoading  by viewModel.dealsLoading.collectAsState()
+    val facts         by viewModel.facts.collectAsState()
     val cellarCount   by viewModel.cellarCount.collectAsState()
-    val whatToOpen    by viewModel.whatToOpen.collectAsState()
+    val notesCount    by viewModel.notesCount.collectAsState()
+    val extras        by viewModel.extras.collectAsState()
+    val photoCandidates by viewModel.photoCandidates.collectAsState()
+    val clipboardText by viewModel.clipboardText.collectAsState()
+    val recognitionPhotoUri by viewModel.recognitionPhotoUri.collectAsState()
+    val refreshing    by viewModel.refreshing.collectAsState()
 
     val context = LocalContext.current
+    val clipboard = androidx.compose.ui.platform.LocalClipboardManager.current
 
-    val addToCellarSuccess by viewModel.addToCellarSuccess.collectAsState()
-
-    var showWhatToOpen  by remember { mutableStateOf(false) }
     var showQuickNote   by remember { mutableStateOf(false) }
-    var cameraUri       by remember { mutableStateOf<Uri?>(null) }
+    var showScanCamera  by remember { mutableStateOf(false) }
     var showPermDialog  by remember { mutableStateOf(false) }
     var cellarItemsList by remember { mutableStateOf<List<CellarItemDto>>(emptyList()) }
     var pendingAddWine  by remember { mutableStateOf<WineRecognitionResult?>(null) }
+    var editWine        by remember { mutableStateOf<WineRecognitionResult?>(null) }
 
     // Gallery
     val galleryLauncher = rememberLauncherForActivityResult(
         ActivityResultContracts.GetContent()
     ) { uri: Uri? -> uri?.let { viewModel.onImagePicked(it) } }
 
-    // Camera
-    val cameraLauncher = rememberLauncherForActivityResult(
-        ActivityResultContracts.TakePicture()
-    ) { ok -> if (ok) cameraUri?.let { viewModel.onImagePicked(it) } }
-
+    // Разрешение камеры → встроенная камера CameraX (без подтверждения снимка)
     val cameraPermLauncher = rememberLauncherForActivityResult(
         ActivityResultContracts.RequestPermission()
     ) { granted ->
-        if (granted) {
-            cameraUri = createTempUri(context)
-            cameraUri?.let { cameraLauncher.launch(it) }
-        } else showPermDialog = true
+        if (granted) showScanCamera = true else showPermDialog = true
     }
 
     fun launchCamera() {
         if (ContextCompat.checkSelfPermission(context, Manifest.permission.CAMERA)
             == PackageManager.PERMISSION_GRANTED) {
-            cameraUri = createTempUri(context)
-            cameraUri?.let { cameraLauncher.launch(it) }
+            showScanCamera = true
         } else cameraPermLauncher.launch(Manifest.permission.CAMERA)
     }
 
-    // Dialogs
-    if (addToCellarSuccess) {
-        LaunchedEffect(Unit) { viewModel.clearAddToCellarSuccess() }
+    // Запуск распознавания, инициированный из другого раздела (например, погреба).
+    LaunchedEffect(startAction) {
+        when (startAction) {
+            "scan"    -> launchCamera()
+            "gallery" -> galleryLauncher.launch("image/*")
+        }
+        if (startAction != null) onConsumeStartAction()
+    }
+
+    // Копирование «внешнего исследования» в буфер
+    LaunchedEffect(clipboardText) {
+        clipboardText?.let { text ->
+            clipboard.setText(androidx.compose.ui.text.AnnotatedString(text))
+            viewModel.clearClipboardText()
+            android.widget.Toast.makeText(
+                context,
+                "Описание для поиска информации о вине скопировано в буфер обмена",
+                android.widget.Toast.LENGTH_LONG,
+            ).show()
+        }
+    }
+
+    if (showScanCamera) {
+        ScanCameraSheet(
+            onCaptured = { uri ->
+                showScanCamera = false
+                viewModel.onImagePicked(uri)
+            },
+            onDismiss = { showScanCamera = false },
+        )
     }
 
     pendingAddWine?.let { wine ->
@@ -107,6 +147,25 @@ fun HomeScreen(
             onConfirm = { qty -> viewModel.addToCellar(wine, qty); pendingAddWine = null },
             onDismiss = { pendingAddWine = null },
         )
+    }
+
+    editWine?.let { wine ->
+        EditRecognizedWineDialog(
+            wine      = wine,
+            onConfirm = { updated -> viewModel.editWine(wine, updated); editWine = null },
+            onDismiss = { editWine = null },
+        )
+    }
+
+    when (val pc = photoCandidates) {
+        is PhotoCandidatesState.Loading, is PhotoCandidatesState.Loaded -> {
+            PhotoCandidatesDialog(
+                state    = pc,
+                onSelect = { wine, url -> viewModel.selectPhotoCandidate(wine, url) },
+                onDismiss = { viewModel.closePhotoCandidates() },
+            )
+        }
+        else -> {}
     }
 
     if (showPermDialog) {
@@ -122,15 +181,6 @@ fun HomeScreen(
         researchState is ResearchUiState.Result  ||
         researchState is ResearchUiState.Error) {
         ResearchDialog(state = researchState, onDismiss = { viewModel.clearResearch() })
-    }
-
-    if (showWhatToOpen) {
-        WhatToOpenSheet(
-            state               = whatToOpen,
-            photoUrl            = { path -> viewModel.absolutePhotoUrl(path) },
-            onGetRecommendation = { mood, food -> viewModel.getRecommendation(mood, food) },
-            onDismiss           = { showWhatToOpen = false; viewModel.clearWhatToOpen() }
-        )
     }
 
     if (showQuickNote) {
@@ -157,7 +207,13 @@ fun HomeScreen(
         // ── Content ──────────────────────────────────────────────────────────
         val isIdle = query.isBlank() && uiState is HomeUiState.Idle
 
+        PullToRefreshBox(
+            isRefreshing = refreshing,
+            onRefresh    = { viewModel.refresh() },
+            modifier     = Modifier.weight(1f),
+        ) {
         LazyColumn(
+            modifier = Modifier.fillMaxSize(),
             contentPadding = PaddingValues(bottom = 24.dp)
         ) {
             // Search field — always at top
@@ -167,14 +223,46 @@ fun HomeScreen(
                     imageLoading = imageLoading,
                     onQueryChange  = viewModel::onQueryChange,
                     onClearQuery   = viewModel::clearResults,
+                    onSubmit       = viewModel::submitSearch,
                     onGalleryClick = { galleryLauncher.launch("image/*") },
                     onCameraClick  = { launchCamera() },
-                    modifier = Modifier.padding(horizontal = 18.dp, vertical = 14.dp)
+                    modifier = Modifier.padding(top = 3.5.dp, bottom = 10.dp)
                 )
             }
 
             if (isIdle) {
-                // ── TOP DEALS ────────────────────────────────────────────────
+                // ── CELLAR + QUICK NOTE (сразу под поиском) ───────────────────
+                item {
+                    Row(
+                        modifier = Modifier
+                            .padding(horizontal = 18.dp)
+                            .fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(12.dp)
+                    ) {
+                        CellarWidget(
+                            count    = cellarCount,
+                            onClick  = onNavigateToCellar,
+                            modifier = Modifier.weight(1f)
+                        )
+                        QuickNoteWidget(
+                            count    = notesCount,
+                            onClick  = onNavigateToNotes,
+                            modifier = Modifier.weight(1f)
+                        )
+                    }
+                    Spacer(Modifier.height(20.dp))
+                }
+
+                // ── WHAT TO OPEN ─────────────────────────────────────────────
+                item {
+                    WhatToOpenButton(
+                        onClick  = onNavigateToSmartSearch,
+                        modifier = Modifier.padding(horizontal = 18.dp)
+                    )
+                    Spacer(Modifier.height(4.5.dp))
+                }
+
+                // ── TOP DEALS (в самом низу) ──────────────────────────────────
                 item {
                     SectionHeader(
                         label     = "ТОП СКИДОК ДНЯ",
@@ -182,7 +270,7 @@ fun HomeScreen(
                         onAction  = onNavigateToDiscounts,
                         modifier  = Modifier.padding(horizontal = 18.dp)
                     )
-                    Spacer(Modifier.height(12.dp))
+                    Spacer(Modifier.height(0.75.dp))
                 }
                 item {
                     if (dealsLoading) {
@@ -198,37 +286,27 @@ fun HomeScreen(
                             items(topDeals) { deal -> DealCard(deal) }
                         }
                     }
-                    Spacer(Modifier.height(24.dp))
                 }
 
-                // ── WHAT TO OPEN ─────────────────────────────────────────────
-                item {
-                    WhatToOpenButton(
-                        onClick  = { showWhatToOpen = true },
-                        modifier = Modifier.padding(horizontal = 18.dp)
-                    )
-                    Spacer(Modifier.height(24.dp))
-                }
-
-                // ── CELLAR + QUICK NOTE ──────────────────────────────────────
-                item {
-                    Row(
-                        modifier = Modifier
-                            .padding(horizontal = 18.dp)
-                            .fillMaxWidth(),
-                        horizontalArrangement = Arrangement.spacedBy(12.dp)
-                    ) {
-                        CellarWidget(
-                            count    = cellarCount,
-                            onClick  = onNavigateToCellar,
-                            modifier = Modifier.weight(1f)
+                // ── INTERESTING FACTS (под каруселью скидок) ──────────────────
+                if (facts.isNotEmpty()) {
+                    item {
+                        Spacer(Modifier.height(20.dp))
+                        SectionHeader(
+                            label    = "ИНТЕРЕСНЫЕ ФАКТЫ",
+                            modifier = Modifier.padding(horizontal = 18.dp)
                         )
-                        QuickNoteWidget(
-                            onClick  = { showQuickNote = true },
-                            modifier = Modifier.weight(1f)
-                        )
+                        Spacer(Modifier.height(0.75.dp))
                     }
-                    Spacer(Modifier.height(16.dp))
+                    item {
+                        LazyRow(
+                            contentPadding = PaddingValues(horizontal = 18.dp),
+                            horizontalArrangement = Arrangement.spacedBy(13.dp)
+                        ) {
+                            items(facts) { fact -> FactCard(fact) }
+                        }
+                        Spacer(Modifier.height(8.dp))
+                    }
                 }
 
             } else {
@@ -251,11 +329,18 @@ fun HomeScreen(
                         val wines = (uiState as HomeUiState.Results).wines
                         items(wines) { wine ->
                             WineResultCard(
-                                wine         = wine,
-                                onResearch   = { viewModel.researchWine(wine) },
+                                wine          = wine,
+                                extras        = extras[wineKey(wine)] ?: WineExtras(),
+                                photoUri      = recognitionPhotoUri,
+                                onResearch    = { viewModel.researchWine(wine) },
                                 onAddToCellar = { pendingAddWine = wine },
-                                justAdded    = addToCellarSuccess,
-                                modifier     = Modifier.padding(horizontal = 18.dp, vertical = 4.dp)
+                                onEdit        = { editWine = wine },
+                                onPickPhoto   = { viewModel.openPhotoCandidates(wine) },
+                                onExternal    = { viewModel.externalResearch(wine) },
+                                onOpenUrl     = { url ->
+                                    context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(url)))
+                                },
+                                modifier      = Modifier.padding(horizontal = 18.dp, vertical = 4.dp)
                             )
                         }
                     }
@@ -263,40 +348,14 @@ fun HomeScreen(
                 }
             }
         }
+        }
     }
 }
 
 // ── Top bar ──────────────────────────────────────────────────────────────────
 @Composable
 private fun HomeTopBar() {
-    Row(
-        modifier = Modifier
-            .fillMaxWidth()
-            .background(TokenBg)
-            .padding(horizontal = 18.dp, vertical = 10.dp),
-        verticalAlignment = Alignment.CenterVertically
-    ) {
-        // Logo + wordmark
-        AsyncImage(
-            model             = "file:///android_asset/logo.png",
-            contentDescription = "Merlotic",
-            contentScale       = ContentScale.Crop,
-            modifier           = Modifier
-                .size(30.dp)
-                .clip(RoundedCornerShape(9.dp))
-        )
-        Spacer(Modifier.width(8.dp))
-        Text(
-            text  = "Merlotic",
-            style = MaterialTheme.typography.titleLarge.copy(
-                fontWeight    = FontWeight.SemiBold,
-                fontSize      = 21.sp,
-                letterSpacing = (-0.42).sp
-            ),
-            color = TokenInk
-        )
-        Spacer(Modifier.weight(1f))
-
+    MerloticTopBar(title = "Merlotic") {
         // Server status dot
         Box(
             modifier = Modifier
@@ -333,97 +392,39 @@ private fun SearchField(
     imageLoading:  Boolean,
     onQueryChange: (String) -> Unit,
     onClearQuery:  () -> Unit,
+    onSubmit:      () -> Unit,
     onGalleryClick: () -> Unit,
     onCameraClick:  () -> Unit,
     modifier:       Modifier = Modifier
 ) {
-    Surface(
-        modifier = modifier.fillMaxWidth(),
-        shape    = RoundedCornerShape(16.dp),
-        color    = TokenCard,
-        border   = BorderStroke(1.dp, TokenLine),
-        shadowElevation = 1.dp
+    MerloticSearchBar(
+        value         = query,
+        onValueChange = onQueryChange,
+        onClear       = onClearQuery,
+        placeholder   = "Вино, производитель, регион…",
+        modifier      = modifier,
+        onSubmit      = onSubmit,
     ) {
-        Row(
-            modifier = Modifier.padding(9.dp),
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(8.dp)
-        ) {
-            Icon(Icons.Default.Search, contentDescription = null,
-                tint = TokenInk3, modifier = Modifier.size(20.dp))
-
-            BasicSearchInput(
-                query         = query,
-                onQueryChange = onQueryChange,
-                onClear       = onClearQuery,
-                modifier      = Modifier.weight(1f)
+        when {
+            imageLoading -> CircularProgressIndicator(
+                modifier = Modifier.size(38.dp).padding(9.dp), color = TokenTeal, strokeWidth = 2.dp,
             )
-
-            if (imageLoading) {
-                CircularProgressIndicator(
-                    modifier = Modifier.size(42.dp).padding(9.dp),
-                    color    = TokenTeal,
-                    strokeWidth = 2.dp
-                )
-            } else {
-                // Gallery button
-                IconButton(
-                    onClick   = onGalleryClick,
-                    modifier  = Modifier
-                        .size(42.dp)
-                        .clip(RoundedCornerShape(11.dp))
-                        .background(TokenFill)
-                ) {
-                    Icon(Icons.Default.PhotoLibrary, contentDescription = "Галерея",
-                        tint = TokenInk2, modifier = Modifier.size(20.dp))
-                }
-                // Camera button
-                IconButton(
-                    onClick  = onCameraClick,
-                    modifier = Modifier
-                        .size(42.dp)
-                        .clip(RoundedCornerShape(11.dp))
-                        .background(TokenTeal)
-                ) {
-                    Icon(Icons.Default.PhotoCamera, contentDescription = "Камера",
-                        tint = Color.White, modifier = Modifier.size(20.dp))
-                }
+            // Идёт ввод текста — показываем кнопку поиска
+            query.isNotBlank() ->
+                SearchBarActionButton(Icons.AutoMirrored.Filled.ArrowForward, "Искать", onSubmit)
+            else -> {
+                SearchBarActionButton(Icons.Default.PhotoLibrary, "Галерея", onGalleryClick)
+                SearchBarActionButton(Icons.Default.PhotoCamera, "Камера", onCameraClick)
             }
         }
     }
 }
 
-@Composable
-private fun BasicSearchInput(
-    query:         String,
-    onQueryChange: (String) -> Unit,
-    onClear:       () -> Unit,
-    modifier:      Modifier = Modifier
-) {
-    androidx.compose.foundation.text.BasicTextField(
-        value       = query,
-        onValueChange = onQueryChange,
-        singleLine  = true,
-        textStyle   = MaterialTheme.typography.bodyMedium.copy(color = TokenInk),
-        modifier    = modifier,
-        decorationBox = { inner ->
-            Box {
-                if (query.isEmpty()) {
-                    Text("Вино, производитель, регион…",
-                        style = MaterialTheme.typography.bodyMedium,
-                        color = TokenInk3)
-                }
-                inner()
-            }
-        }
-    )
-}
-
 // ── Section header ────────────────────────────────────────────────────────────
 @Composable
 private fun SectionHeader(
-    label: String, actionLabel: String,
-    onAction: () -> Unit, modifier: Modifier = Modifier
+    label: String, actionLabel: String? = null,
+    onAction: (() -> Unit)? = null, modifier: Modifier = Modifier
 ) {
     Row(
         modifier = modifier.fillMaxWidth(),
@@ -432,15 +433,48 @@ private fun SectionHeader(
     ) {
         Text(
             text  = label,
-            style = MaterialTheme.typography.labelMedium.copy(
-                fontWeight    = FontWeight.Medium,
-                letterSpacing = 0.16.sp
-            ),
-            color = TokenInk3
+            fontSize = 12.sp,
+            fontWeight = FontWeight.Medium,
+            letterSpacing = 0.8.sp,
+            color = TokenInk
         )
-        TextButton(onClick = onAction, contentPadding = PaddingValues(0.dp)) {
-            Text(actionLabel, style = MaterialTheme.typography.labelLarge,
-                color = TokenTeal)
+        if (actionLabel != null && onAction != null) {
+            TextButton(onClick = onAction, contentPadding = PaddingValues(0.dp)) {
+                Text(actionLabel, fontSize = 13.sp, fontWeight = FontWeight.Medium,
+                    color = TokenTeal)
+            }
+        }
+    }
+}
+
+// ── Fact card ──────────────────────────────────────────────────────────────────
+@Composable
+private fun FactCard(fact: com.enolo.app.data.dto.DailyFactDto) {
+    Surface(
+        modifier = Modifier.width(260.dp),
+        shape    = RoundedCornerShape(16.dp),
+        color    = TokenCard,
+        border   = BorderStroke(1.dp, TokenLine),
+    ) {
+        Column(Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            Text(
+                fact.text,
+                fontSize = 13.sp,
+                lineHeight = 18.sp,
+                color = TokenInk,
+                maxLines = 6,
+                overflow = TextOverflow.Ellipsis,
+            )
+            if (fact.source.isNotBlank()) {
+                Text(
+                    fact.source,
+                    fontSize = 11.sp,
+                    fontWeight = FontWeight.Medium,
+                    color = TokenInk3,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                )
+            }
         }
     }
 }
@@ -450,22 +484,34 @@ private fun SectionHeader(
 private fun DealCard(offer: DiscountOfferDto) {
     val uriHandler = LocalUriHandler.current
     Surface(
-        modifier = Modifier.width(165.dp),
+        modifier = Modifier.width(124.dp),
         shape    = RoundedCornerShape(16.dp),
         color    = TokenCard,
         border   = BorderStroke(1.dp, TokenLine),
         onClick  = { if (offer.url.isNotBlank()) runCatching { uriHandler.openUri(offer.url) } }
     ) {
         Column {
-            // Photo zone 118dp
-            Box(
-                modifier = Modifier.fillMaxWidth().height(118.dp).background(TokenFill)
+            // Photo zone — вытянута по вертикали (2:3 к ширине карточки), белый фон,
+            // чтобы прозрачные PNG не давали чёрный.
+            BoxWithConstraints(
+                modifier = Modifier.fillMaxWidth().height(186.dp).background(Color.White)
             ) {
                 if (offer.imageUrl != null) {
-                    AsyncImage(
-                        model             = offer.imageUrl,
+                    val painter = rememberAsyncImagePainter(offer.imageUrl)
+                    val intrinsic = painter.intrinsicSize
+                    val boxWpx = constraints.maxWidth.toFloat()
+                    val boxHpx = constraints.maxHeight.toFloat()
+                    // Кроп заполняет ширину. Для длинных фото якорим по вертикали так,
+                    // чтобы точка на 40% от низа масштабированной картинки попала в центр карточки.
+                    val vBias = if (intrinsic.isSpecified && intrinsic.width > 0f && intrinsic.height > 0f) {
+                        val h = intrinsic.height * (boxWpx / intrinsic.width) // высота после масштаба под ширину
+                        if (h <= boxHpx) 0f else (0.2f * h / (h - boxHpx)).coerceIn(-1f, 1f)
+                    } else 1f
+                    Image(
+                        painter            = painter,
                         contentDescription = null,
-                        contentScale       = ContentScale.Fit,
+                        contentScale       = ContentScale.Crop,
+                        alignment          = BiasAlignment(0f, vBias),
                         modifier           = Modifier.fillMaxSize()
                     )
                 } else {
@@ -482,8 +528,7 @@ private fun DealCard(offer: DiscountOfferDto) {
                     ) {
                         Text(
                             text  = "−$pct%",
-                            style = MaterialTheme.typography.labelMedium.copy(
-                                fontWeight = FontWeight.SemiBold),
+                            fontSize = 12.sp, fontWeight = FontWeight.SemiBold,
                             color = Color.White,
                             modifier = Modifier.padding(horizontal = 6.dp, vertical = 3.dp)
                         )
@@ -491,45 +536,32 @@ private fun DealCard(offer: DiscountOfferDto) {
                 }
             }
 
-            // Body
+            // Body — уплотнён: миниатюра выросла, текст компактный (минимальные отступы
+            // между «цветом вина» → ценой → магазином), чтобы высота карточки не росла.
             Column(
-                modifier = Modifier.padding(horizontal = 12.dp, vertical = 11.dp),
-                verticalArrangement = Arrangement.spacedBy(3.dp)
+                modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp),
+                verticalArrangement = Arrangement.spacedBy(2.dp)
             ) {
                 Text(
                     text     = offer.wineName ?: offer.wineNameRaw ?: "—",
-                    style    = MaterialTheme.typography.titleSmall.copy(fontSize = 13.5.sp),
-                    maxLines = 1,
+                    style    = MaterialTheme.typography.titleSmall.copy(fontSize = 14.sp, lineHeight = 18.sp),
+                    minLines = 2,
+                    maxLines = 2,
                     overflow = TextOverflow.Ellipsis,
                     color    = TokenInk
                 )
                 val detail = listOfNotNull(offer.country, offer.region)
                     .joinToString(", ").ifBlank { offer.wineType?.let { Formatters.wineTypeRu(it) } ?: "" }
                 if (detail.isNotBlank()) {
-                    Text(detail, style = MaterialTheme.typography.labelSmall,
+                    Text(detail, fontSize = 12.sp,
                         color = TokenInk3, maxLines = 1, overflow = TextOverflow.Ellipsis)
                 }
 
-                Spacer(Modifier.height(2.dp))
-                Row(
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(6.dp)
-                ) {
-                    Text(
-                        text  = "${Formatters.price(offer.currentPrice)} ₽",
-                        style = MaterialTheme.typography.labelMedium.copy(
-                            fontWeight = FontWeight.SemiBold, fontSize = 15.sp),
-                        color = TokenMaroon
-                    )
-                    offer.oldPrice?.let { old ->
-                        Text(
-                            text  = "${Formatters.price(old)} ₽",
-                            style = MaterialTheme.typography.labelSmall.copy(fontSize = 12.sp),
-                            color = TokenInk3,
-                            textDecoration = TextDecoration.LineThrough
-                        )
-                    }
-                }
+                Text(
+                    text  = "${Formatters.price(offer.currentPrice)} ₽",
+                    fontSize = 15.sp, fontWeight = FontWeight.SemiBold,
+                    color = TokenMaroon
+                )
 
                 Row(
                     modifier = Modifier.fillMaxWidth(),
@@ -537,7 +569,7 @@ private fun DealCard(offer: DiscountOfferDto) {
                     verticalAlignment = Alignment.CenterVertically
                 ) {
                     Text(offer.sellerName,
-                        style = MaterialTheme.typography.labelSmall, color = TokenInk3,
+                        fontSize = 12.sp, color = TokenInk3,
                         maxLines = 1, overflow = TextOverflow.Ellipsis,
                         modifier = Modifier.weight(1f))
                     Icon(Icons.Default.ChevronRight, contentDescription = null,
@@ -548,139 +580,186 @@ private fun DealCard(offer: DiscountOfferDto) {
     }
 }
 
-// ── "What to open?" button ────────────────────────────────────────────────────
+// ── "What to open?" hero card ───────────────────────────────────────────────────
 @Composable
 private fun WhatToOpenButton(onClick: () -> Unit, modifier: Modifier = Modifier) {
     Surface(
-        modifier = modifier.fillMaxWidth(),
-        shape    = RoundedCornerShape(16.dp),
+        modifier = modifier.fillMaxWidth().height(152.dp),
+        shape    = RoundedCornerShape(18.dp),
         color    = TokenTealWash,
-        border   = BorderStroke(1.dp, TokenMintBorder),
         onClick  = onClick
     ) {
-        Row(
-            modifier = Modifier.padding(horizontal = 15.dp, vertical = 14.dp),
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(14.dp)
-        ) {
-            // Spark icon in rounded box
-            Surface(
-                modifier = Modifier.size(40.dp),
-                shape    = RoundedCornerShape(11.dp),
-                color    = TokenTeal
+        Box(Modifier.fillMaxSize()) {
+            // Иллюстрация: увеличена (182dp по высоте, отцентрована и обрезается картой),
+            // чтобы бутылка шла от верха текста до низа кнопки. Мятный фон встроен в картинку.
+            Image(
+                painter = painterResource(R.drawable.what_to_open),
+                contentDescription = null,
+                contentScale = ContentScale.Crop,
+                alignment = Alignment.CenterEnd,
+                modifier = Modifier.align(Alignment.Center).fillMaxWidth().height(182.dp)
+            )
+            // Текст + кнопка слева, в пределах ~60% ширины (не залезают на иллюстрацию)
+            Column(
+                modifier = Modifier.fillMaxHeight().fillMaxWidth(0.62f).padding(18.dp),
+                verticalArrangement = Arrangement.SpaceBetween
             ) {
-                Box(contentAlignment = Alignment.Center, modifier = Modifier.fillMaxSize()) {
-                    Icon(Icons.Default.AutoAwesome, contentDescription = null,
-                        tint = Color.White, modifier = Modifier.size(22.dp))
+                Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                    Text("AI-сомелье", fontSize = 19.sp, fontWeight = FontWeight.SemiBold, color = TokenInk)
+                    Text("Подбор вин из погреба и консультации",
+                        fontSize = 13.sp, lineHeight = 17.sp, color = TokenInk2)
+                }
+                Surface(shape = RoundedCornerShape(12.dp), color = TokenTeal) {
+                    Row(
+                        modifier = Modifier.padding(horizontal = 16.dp, vertical = 9.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(6.dp)
+                    ) {
+                        Text("Спросить", color = Color.White, fontSize = 14.sp, fontWeight = FontWeight.Medium)
+                        Icon(Icons.Default.ChevronRight, contentDescription = null,
+                            tint = Color.White, modifier = Modifier.size(17.dp))
+                    }
                 }
             }
-
-            Column(modifier = Modifier.weight(1f)) {
-                Text("Что открыть?",
-                    style = MaterialTheme.typography.titleSmall.copy(fontSize = 16.sp),
-                    color = TokenTealInk)
-                Text("Подбор по настроению и блюду из вашего погреба",
-                    style = MaterialTheme.typography.bodySmall,
-                    color = TokenInk2,
-                    maxLines = 2)
-            }
-
-            Icon(Icons.Default.ChevronRight, contentDescription = null, tint = TokenTeal)
         }
     }
 }
 
-// ── Cellar widget ─────────────────────────────────────────────────────────────
+// ── Cellar widget (фотофон) ────────────────────────────────────────────────────
 @Composable
 private fun CellarWidget(count: Int, onClick: () -> Unit, modifier: Modifier = Modifier) {
     Surface(
-        modifier = modifier.height(108.dp),
-        shape    = RoundedCornerShape(16.dp),
-        color    = TokenCard,
-        border   = BorderStroke(1.dp, TokenLine),
+        modifier = modifier.height(158.dp),
+        shape    = RoundedCornerShape(18.dp),
+        color    = TokenInk,
         onClick  = onClick
     ) {
-        Column(modifier = Modifier
-            .fillMaxSize()
-            .padding(14.dp)) {
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.SpaceBetween,
-                verticalAlignment = Alignment.CenterVertically
+        Box(Modifier.fillMaxSize()) {
+            Image(
+                painter = painterResource(R.drawable.my_cellar),
+                contentDescription = null,
+                contentScale = ContentScale.Crop,
+                modifier = Modifier.fillMaxSize()
+            )
+            Box(Modifier.fillMaxSize().background(
+                Brush.verticalGradient(listOf(Color.Black.copy(alpha = 0.5f), Color.Black.copy(alpha = 0.15f), Color.Black.copy(alpha = 0.35f)))
+            ))
+            Column(
+                modifier = Modifier.fillMaxSize().padding(14.dp),
+                verticalArrangement = Arrangement.SpaceBetween
             ) {
-                Text(
-                    text  = "ПОГРЕБ",
-                    style = MaterialTheme.typography.labelMedium,
-                    color = TokenInk3
+                Column {
+                    Text("ПОГРЕБ", fontSize = 12.sp, fontWeight = FontWeight.Medium,
+                        letterSpacing = 0.8.sp, color = Color.White.copy(alpha = 0.85f))
+                    Text("$count", fontSize = 34.sp, fontWeight = FontWeight.SemiBold,
+                        color = Color.White, lineHeight = 38.sp)
+                }
+                CardPillButton(
+                    leading = { BottleStackIcon(tint = TokenInk, modifier = Modifier.size(15.dp)) },
+                    text = "Открыть",
                 )
-                Icon(Icons.Default.ChevronRight, contentDescription = null,
-                    tint = TokenInk3, modifier = Modifier.size(16.dp))
             }
-            Spacer(Modifier.weight(1f))
-            Text(
-                text  = "$count",
-                style = MaterialTheme.typography.displaySmall,
-                color = TokenInk
-            )
-            Text(
-                text  = "бутылок",
-                style = MaterialTheme.typography.labelSmall,
-                color = TokenInk3
-            )
         }
     }
 }
 
-// ── Quick note widget ─────────────────────────────────────────────────────────
+// ── Notes widget (фотофон) ─────────────────────────────────────────────────────
 @Composable
-private fun QuickNoteWidget(onClick: () -> Unit, modifier: Modifier = Modifier) {
+private fun QuickNoteWidget(count: Int, onClick: () -> Unit, modifier: Modifier = Modifier) {
     Surface(
-        modifier = modifier.height(108.dp),
-        shape    = RoundedCornerShape(16.dp),
-        color    = TokenCard,
-        border   = BorderStroke(1.dp, TokenLine),
+        modifier = modifier.height(158.dp),
+        shape    = RoundedCornerShape(18.dp),
+        color    = TokenInk,
         onClick  = onClick
     ) {
-        Column(
-            modifier = Modifier.fillMaxSize().padding(14.dp)
-        ) {
-            Text(
-                text  = "БЫСТРАЯ ЗАМЕТКА",
-                style = MaterialTheme.typography.labelMedium,
-                color = TokenInk3
+        Box(Modifier.fillMaxSize()) {
+            Image(
+                painter = painterResource(R.drawable.wine_notes),
+                contentDescription = null,
+                contentScale = ContentScale.Crop,
+                modifier = Modifier.fillMaxSize()
             )
-            Spacer(Modifier.weight(1f))
-            Row(
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(8.dp)
+            Box(Modifier.fillMaxSize().background(
+                Brush.verticalGradient(listOf(Color.Black.copy(alpha = 0.55f), Color.Black.copy(alpha = 0.2f), Color.Black.copy(alpha = 0.25f)))
+            ))
+            Column(
+                modifier = Modifier.fillMaxSize().padding(14.dp),
+                verticalArrangement = Arrangement.SpaceBetween
             ) {
-                Surface(
-                    modifier = Modifier.size(36.dp),
-                    shape    = RoundedCornerShape(10.dp),
-                    color    = TokenTealWash,
-                    border   = BorderStroke(1.dp, TokenMintBorder)
-                ) {
-                    Box(contentAlignment = Alignment.Center, modifier = Modifier.fillMaxSize()) {
-                        Icon(Icons.Default.Mic, contentDescription = null,
-                            tint = TokenTeal, modifier = Modifier.size(18.dp))
-                    }
+                Column {
+                    Text("ЗАМЕТКИ", fontSize = 12.sp, fontWeight = FontWeight.Medium,
+                        letterSpacing = 0.8.sp, color = Color.White.copy(alpha = 0.85f))
+                    Text("$count", fontSize = 34.sp, fontWeight = FontWeight.SemiBold,
+                        color = Color.White, lineHeight = 38.sp)
                 }
-                Text("текст или голос",
-                    style = MaterialTheme.typography.labelSmall, color = TokenInk3)
+                CardPillButton(
+                    leading = { Icon(Icons.Default.Edit, contentDescription = null, tint = TokenTeal, modifier = Modifier.size(15.dp)) },
+                    text = "Создать",
+                )
             }
+        }
+    }
+}
+
+/** Иконка-горка из бутылок: 6 кружков пирамидой (1-2-3). */
+@Composable
+private fun BottleStackIcon(tint: Color, modifier: Modifier = Modifier) {
+    androidx.compose.foundation.Canvas(modifier = modifier) {
+        val w = size.width
+        val r = w * 0.135f
+        val cols = listOf(
+            0.5f to 0.21f,                          // верх
+            0.34f to 0.5f, 0.66f to 0.5f,           // середина
+            0.18f to 0.79f, 0.5f to 0.79f, 0.82f to 0.79f, // низ
+        )
+        cols.forEach { (cx, cy) ->
+            drawCircle(color = tint, radius = r, center = androidx.compose.ui.geometry.Offset(cx * w, cy * size.height))
+        }
+    }
+}
+
+/** Белая «таблетка» внизу карточек: иконка + текст слева, шеврон справа, на всю ширину. */
+@Composable
+private fun CardPillButton(leading: @Composable () -> Unit, text: String) {
+    Surface(shape = RoundedCornerShape(12.dp), color = Color.White, modifier = Modifier.fillMaxWidth()) {
+        Row(
+            modifier = Modifier.padding(horizontal = 12.dp, vertical = 9.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            leading()
+            Spacer(Modifier.width(8.dp))
+            Text(text, fontSize = 13.sp, fontWeight = FontWeight.Medium, color = TokenInk, modifier = Modifier.weight(1f))
+            Icon(Icons.Default.ChevronRight, contentDescription = null, tint = TokenInk3, modifier = Modifier.size(15.dp))
         }
     }
 }
 
 // ── Search result card ────────────────────────────────────────────────────────
+private fun abbreviateCriticHome(name: String): String = when {
+    name.contains("Searcher",  ignoreCase = true) -> "W-S"
+    name.contains("Advocate",  ignoreCase = true) -> "WA"
+    name.contains("Spectator", ignoreCase = true) -> "WS"
+    name.contains("Suckling",  ignoreCase = true) -> "JS"
+    name.contains("Vinous",    ignoreCase = true) -> "Vinous"
+    name.contains("Robinson",  ignoreCase = true) -> "JR"
+    name.contains("Decanter",  ignoreCase = true) -> "DC"
+    else -> name.take(4)
+}
+
 @Composable
 private fun WineResultCard(
     wine:          WineRecognitionResult,
+    extras:        WineExtras,
+    photoUri:      Uri?,
     onResearch:    () -> Unit,
     onAddToCellar: () -> Unit,
-    justAdded:     Boolean = false,
+    onEdit:        () -> Unit,
+    onPickPhoto:   () -> Unit,
+    onExternal:    () -> Unit,
+    onOpenUrl:     (String) -> Unit,
     modifier:      Modifier = Modifier,
 ) {
+    val justAdded = extras.added
     Surface(
         modifier = modifier.fillMaxWidth(),
         shape    = RoundedCornerShape(16.dp),
@@ -691,22 +770,101 @@ private fun WineResultCard(
             modifier = Modifier.padding(14.dp),
             verticalArrangement = Arrangement.spacedBy(8.dp)
         ) {
-            if (wine.producer.isNotBlank()) {
-                Text(wine.producer, style = MaterialTheme.typography.labelSmall, color = TokenInk2)
-            }
-            Text(wine.name.ifBlank { "Неизвестное вино" },
-                style    = MaterialTheme.typography.titleSmall,
-                color    = TokenInk,
-                fontWeight = FontWeight.SemiBold)
+            Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                // Фото: выбранный кандидат > исходный снимок
+                val photoModel: Any? = extras.selectedPhotoUrl ?: photoUri
+                if (photoModel != null) {
+                    AsyncImage(
+                        model              = photoModel,
+                        contentDescription = null,
+                        contentScale       = ContentScale.Crop,
+                        modifier           = Modifier
+                            .size(width = 64.dp, height = 84.dp)
+                            .clip(RoundedCornerShape(10.dp))
+                            .background(Color.White)
+                    )
+                }
+                Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(3.dp)) {
+                    if (wine.producer.isNotBlank()) {
+                        Text(wine.producer, style = MaterialTheme.typography.labelSmall, color = TokenInk2)
+                    }
+                    Text(wine.name.ifBlank { "Неизвестное вино" },
+                        style    = MaterialTheme.typography.titleSmall,
+                        color    = TokenInk,
+                        fontWeight = FontWeight.SemiBold)
 
-            val details = listOfNotNull(
-                wine.vintageYear?.toString(),
-                wine.wineType?.let { Formatters.wineTypeRu(it) },
-                wine.country
-            )
-            if (details.isNotEmpty()) {
-                Text(details.joinToString(" · "),
-                    style = MaterialTheme.typography.bodySmall, color = TokenInk3)
+                    val details = listOfNotNull(
+                        wine.vintageYear?.toString(),
+                        wine.wineType?.let { Formatters.wineTypeRu(it) },
+                        wine.country,
+                        wine.region,
+                    )
+                    if (details.isNotEmpty()) {
+                        Text(details.joinToString(" · "),
+                            style = MaterialTheme.typography.bodySmall, color = TokenInk3)
+                    }
+                    wine.grapes?.takeIf { it.isNotEmpty() }?.let { grapes ->
+                        Text(grapes.joinToString(", "),
+                            style = MaterialTheme.typography.bodySmall, color = TokenInk3)
+                    }
+
+                    // В погребе / заметка
+                    if (extras.inCellarCount > 0) {
+                        Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                            Surface(shape = RoundedCornerShape(7.dp), color = TokenTealWash) {
+                                Text("В погребе ×${extras.inCellarCount}",
+                                    fontSize = 11.sp, color = TokenTeal, fontWeight = FontWeight.Medium,
+                                    modifier = Modifier.padding(horizontal = 7.dp, vertical = 3.dp))
+                            }
+                            if (extras.hasNote) {
+                                Surface(shape = RoundedCornerShape(7.dp), color = TokenGoldWash) {
+                                    Text("Есть заметка",
+                                        fontSize = 11.sp, color = TokenGoldInk, fontWeight = FontWeight.Medium,
+                                        modifier = Modifier.padding(horizontal = 7.dp, vertical = 3.dp))
+                                }
+                            }
+                        }
+                    }
+                }
+                IconButton(onClick = onEdit, modifier = Modifier.size(32.dp)) {
+                    Icon(Icons.Default.Edit, contentDescription = "Изменить", tint = TokenInk3, modifier = Modifier.size(17.dp))
+                }
+            }
+
+            // Обогащение: Vivino / Wine-Searcher / оценки
+            if (extras.enrichLoading) {
+                Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                    CircularProgressIndicator(color = TokenTeal, modifier = Modifier.size(13.dp), strokeWidth = 2.dp)
+                    Text("Ищем на Vivino и Wine-Searcher…", fontSize = 11.5.sp, color = TokenInk3)
+                }
+            } else extras.enrich?.let { e ->
+                val scoreText = e.criticScores?.entries
+                    ?.sortedByDescending { it.value }
+                    ?.take(3)
+                    ?.joinToString(" · ") { "${abbreviateCriticHome(it.key)} ${it.value}" }
+                Row(
+                    horizontalArrangement = Arrangement.spacedBy(6.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    e.vivinoUrl?.let { url ->
+                        Surface(shape = RoundedCornerShape(7.dp), color = TokenTealWash,
+                            modifier = Modifier.clip(RoundedCornerShape(7.dp)).clickable { onOpenUrl(url) }) {
+                            Text("Vivino ↗", fontSize = 11.sp, color = TokenTeal, fontWeight = FontWeight.Medium,
+                                modifier = Modifier.padding(horizontal = 7.dp, vertical = 3.dp))
+                        }
+                    }
+                    e.wineSearcherUrl?.let { url ->
+                        Surface(shape = RoundedCornerShape(7.dp), color = TokenTealWash,
+                            modifier = Modifier.clip(RoundedCornerShape(7.dp)).clickable { onOpenUrl(url) }) {
+                            Text("Wine-Searcher ↗", fontSize = 11.sp, color = TokenTeal, fontWeight = FontWeight.Medium,
+                                modifier = Modifier.padding(horizontal = 7.dp, vertical = 3.dp))
+                        }
+                    }
+                    scoreText?.let {
+                        Text(it, fontSize = 11.sp, color = TokenTeal,
+                            style = MaterialTheme.typography.labelSmall.copy(fontFamily = androidx.compose.ui.text.font.FontFamily.Monospace))
+                    }
+                }
             }
 
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -718,7 +876,7 @@ private fun WineResultCard(
                 ) {
                     Icon(Icons.Default.AutoAwesome, contentDescription = null, modifier = Modifier.size(16.dp))
                     Spacer(Modifier.width(4.dp))
-                    Text("Исследовать")
+                    Text("Исследовать", maxLines = 1)
                 }
                 OutlinedButton(
                     onClick  = onAddToCellar,
@@ -733,11 +891,124 @@ private fun WineResultCard(
                         modifier = Modifier.size(16.dp)
                     )
                     Spacer(Modifier.width(4.dp))
-                    Text(if (justAdded) "Добавлено" else "В погреб")
+                    Text(if (justAdded) "Добавлено" else "В погреб", maxLines = 1)
+                }
+            }
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                TextButton(onClick = onPickPhoto, modifier = Modifier.weight(1f)) {
+                    Icon(Icons.Default.Image, contentDescription = null, tint = TokenInk3, modifier = Modifier.size(15.dp))
+                    Spacer(Modifier.width(4.dp))
+                    Text("Подобрать фото", fontSize = 12.5.sp, color = TokenInk2, maxLines = 1)
+                }
+                TextButton(onClick = onExternal, modifier = Modifier.weight(1f)) {
+                    Icon(Icons.Default.ContentCopy, contentDescription = null, tint = TokenInk3, modifier = Modifier.size(15.dp))
+                    Spacer(Modifier.width(4.dp))
+                    Text("Внешнее исследование", fontSize = 12.5.sp, color = TokenInk2, maxLines = 1)
                 }
             }
         }
     }
+}
+
+// ── Edit recognized wine ──────────────────────────────────────────────────────
+@Composable
+private fun EditRecognizedWineDialog(
+    wine:      WineRecognitionResult,
+    onConfirm: (WineRecognitionResult) -> Unit,
+    onDismiss: () -> Unit,
+) {
+    var producer by remember { mutableStateOf(wine.producer) }
+    var name     by remember { mutableStateOf(wine.name) }
+    var vintage  by remember { mutableStateOf(wine.vintageYear?.toString() ?: "") }
+    var region   by remember { mutableStateOf(wine.region ?: "") }
+    var country  by remember { mutableStateOf(wine.country ?: "") }
+
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text("Исправить распознавание") },
+        text = {
+            Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                OutlinedTextField(value = producer, onValueChange = { producer = it },
+                    label = { Text("Производитель") }, singleLine = true)
+                OutlinedTextField(value = name, onValueChange = { name = it },
+                    label = { Text("Название") }, singleLine = true)
+                Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                    OutlinedTextField(value = vintage, onValueChange = { vintage = it.filter { c -> c.isDigit() }.take(4) },
+                        label = { Text("Год") }, singleLine = true, modifier = Modifier.weight(1f))
+                    OutlinedTextField(value = country, onValueChange = { country = it },
+                        label = { Text("Страна") }, singleLine = true, modifier = Modifier.weight(1f))
+                }
+                OutlinedTextField(value = region, onValueChange = { region = it },
+                    label = { Text("Регион") }, singleLine = true)
+            }
+        },
+        confirmButton = {
+            Button(
+                onClick = {
+                    onConfirm(wine.copy(
+                        producer    = producer.trim(),
+                        name        = name.trim(),
+                        vintageYear = vintage.toIntOrNull(),
+                        region      = region.trim().ifBlank { null },
+                        country     = country.trim().ifBlank { null },
+                    ))
+                },
+                shape  = RoundedCornerShape(10.dp),
+                colors = ButtonDefaults.buttonColors(containerColor = TokenTeal),
+            ) { Text("Сохранить", color = Color.White) }
+        },
+        dismissButton = { TextButton(onClick = onDismiss) { Text("Отмена") } },
+    )
+}
+
+// ── Photo candidates picker ───────────────────────────────────────────────────
+@Composable
+private fun PhotoCandidatesDialog(
+    state:     PhotoCandidatesState,
+    onSelect:  (WineRecognitionResult, String) -> Unit,
+    onDismiss: () -> Unit,
+) {
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text("Выберите фото") },
+        text = {
+            when (state) {
+                is PhotoCandidatesState.Loading -> {
+                    Box(Modifier.fillMaxWidth().padding(24.dp), contentAlignment = Alignment.Center) {
+                        CircularProgressIndicator(color = TokenTeal)
+                    }
+                }
+                is PhotoCandidatesState.Loaded -> {
+                    if (state.images.isEmpty()) {
+                        Text("Картинки не найдены", color = TokenInk3)
+                    } else {
+                        LazyVerticalGrid(
+                            columns = GridCells.Fixed(2),
+                            horizontalArrangement = Arrangement.spacedBy(8.dp),
+                            verticalArrangement = Arrangement.spacedBy(8.dp),
+                            modifier = Modifier.heightIn(max = 420.dp),
+                        ) {
+                            items(state.images.size) { i ->
+                                AsyncImage(
+                                    model              = state.images[i],
+                                    contentDescription = null,
+                                    contentScale       = ContentScale.Fit,
+                                    modifier           = Modifier
+                                        .aspectRatio(0.75f)
+                                        .clip(RoundedCornerShape(10.dp))
+                                        .background(Color.White)
+                                        .clickable { onSelect(state.wine, state.images[i]) }
+                                )
+                            }
+                        }
+                    }
+                }
+                else -> {}
+            }
+        },
+        confirmButton = {},
+        dismissButton = { TextButton(onClick = onDismiss) { Text("Отмена") } },
+    )
 }
 
 @Composable
@@ -784,7 +1055,3 @@ private fun AddToCellarDialog(
     )
 }
 
-private fun createTempUri(context: Context): Uri {
-    val f = File(context.cacheDir, "cam_${System.currentTimeMillis()}.jpg")
-    return FileProvider.getUriForFile(context, "${context.packageName}.fileprovider", f)
-}

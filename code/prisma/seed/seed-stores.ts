@@ -32,6 +32,54 @@ async function main() {
   } else {
     console.log('Store already exists: coolclever')
   }
+
+  // ── Лента ──────────────────────────────────────────────────────────────────
+  const lenta = await prisma.store.findFirst({ where: { code: 'lenta' } })
+  if (!lenta) {
+    await prisma.store.create({
+      data: {
+        name: 'Лента',
+        code: 'lenta',
+        baseUrl: 'https://lenta.com',
+        parserType: 'playwright',
+        scrapePeriodMinutes: 60,
+        currency: 'RUB',
+        country: 'RU',
+        active: true,
+        // Категории можно переопределить здесь; пусто → дефолтные в lenta.scraper.ts
+        // (Красное/Белое/Розовое/Крепленое). Игристое добавляется сюда, когда
+        // станет известен его categoryId: { id: <N>, label: 'Игристое', wineType: 'SPARKLING' }.
+        configJson: { categories: [] },
+      },
+    })
+    console.log('Created store: Лента (lenta)')
+  } else {
+    console.log('Store already exists: lenta')
+  }
+
+  // ── Глобус ───────────────────────────────────────────────────────────────────
+  // Внимание: каталог Глобуса доступен только с российского IP (гео-блок).
+  const globus = await prisma.store.findFirst({ where: { code: 'globus' } })
+  if (!globus) {
+    await prisma.store.create({
+      data: {
+        name: 'Глобус',
+        code: 'globus',
+        baseUrl: 'https://online.globus.ru',
+        parserType: 'playwright',
+        scrapePeriodMinutes: 60,
+        currency: 'RUB',
+        country: 'RU',
+        active: true,
+        // Пусто → дефолтная категория «Вино» в globus.scraper.ts. Доп. категории:
+        // { categoryId: <N>, urlPath: '/catalog/alkogol-1225631/<slug>-<N>/', label: '...' }
+        configJson: { categories: [] },
+      },
+    })
+    console.log('Created store: Глобус (globus)')
+  } else {
+    console.log('Store already exists: globus')
+  }
 }
 
 main()

@@ -3,6 +3,7 @@ import { Browser, BrowserContext, Page, Response } from 'playwright'
 import { Store } from '@prisma/client'
 import {
   BaseScraper,
+  BlockedError,
   RawScrapedOffer,
   ScraperCallbacks,
   ScraperCheckpointCallbacks,
@@ -119,7 +120,7 @@ export class WineLabScraper extends BaseScraper {
       this.logger.log(`Total unique product codes collected from categories: ${uniqueCodes.length}`)
 
       if (uniqueCodes.length === 0) {
-        throw new Error('WineLab: no product codes collected from categories')
+        throw new BlockedError('WineLab: ни одного кода товара из категорий — вероятна блокировка/VPN (пустой каталог)')
       }
 
       const sparklingUrlPattern = 'shampanskie-i-igristye-vina'
@@ -952,6 +953,12 @@ export class WineLabScraper extends BaseScraper {
 
         if (attempt >= this.maxServerErrorAttempts) {
           break
+        }
+
+        // Сеть пропала/сменилась (VPN) — ждём восстановления, не тратя попытки.
+        if (!(await this.checkInternet())) {
+          this.logger.warn(`${label}: сеть недоступна — жду восстановления перед повтором`)
+          await this.waitForConnectivity()
         }
 
         const delayMs = this.getBackoffDelayMs(attempt)

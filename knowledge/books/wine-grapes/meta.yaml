@@ -1,0 +1,15 @@
+book_id: wine-grapes
+title: "Wine Grapes: A complete guide to 1,368 vine varieties, including their origins and flavours"
+author: "Jancis Robinson, Julia Harding, José Vouillamoz"
+series: ""
+publisher: "Allen Lane / Penguin"
+year: 2012
+language: ["eng"]
+target_language: "rus"
+source_epub: "C:\\Users\\LoGun\\Videos\\Robinson - Wine Grapes (2013).epub"
+intermediates: "C:\\Users\\LoGun\\AppData\\Local\\Temp\\book_wine-grapes\\docs"
+docs_total: 81
+method: "structured-facts (ocr: facts) — трансформативный пересказ СВОИМИ словами EN→RU перевод Claude; авторская проза/цитаты НЕ дословно; перевод выполняет Claude, внешние LLM не используются"
+ocr_anchor: "EPUB text-layer (doc_NNNN.txt из spine); чистый текст, OCR не требуется"
+structure: "doc_0001-0009 — фронт-маттер/введение/методология; doc_0010 — алфавитный индекс 1368 сортов (список); doc_0011+ — статьи сортов (VARIETY → Berry colour / PRINCIPAL SYNONYMS / ORIGINS AND PARENTAGE / OTHER HYPOTHESES / WHERE IT'S GROWN / VITICULTURAL CHARACTERISTICS). Каждый сорт = ## СОРТ (→ отдельный чанк)"
+notes: "Размеры doc сильно неравны (doc_0050 PINOT NOIR-кластер = 157K симв.). Одна статья сорта = один ## заголовок. Синонимы/родительские сорта/регионы — тезисами; числа (год, площадь га) сверять."

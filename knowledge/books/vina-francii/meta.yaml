@@ -1,0 +1,17 @@
+book_id: vina-francii
+title: "Вина Франции. Главные сорта, регионы и аппелласьоны"
+series: "Simple Wine News. Просто о лучших винах"
+publisher: 'ООО «Издательство "Э"» (Эксмо)'
+city: Москва
+year: 2016
+isbn: "978-5-699-91519-4"
+udk: "663.2(44)"
+bbk: "36.87"
+editor_in_chief: "Анастасия Прохорова"
+language: ru
+secondary_language: fr
+printed_pages: 312
+pdf_pages: 315
+# Печатная нумерация смещена относительно файлов PNG: printed = pdf_file - 1
+# (печатная стр. 12  ==  pages/page_013.png). Проверять смещение по колонтитулам.
+source_pdf: "C:/Users/LoGun/YandexDisk/МОИ ДОКУМЕНТЫ/РАЗНОЕ/ЛИТЕРАТУРА/ВИНО/Вина Франции. Главные сорта, регионы и аппелласьоны - (Simple Wine News. Просто о лучших винах) - 2016.pdf"

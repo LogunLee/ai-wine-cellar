@@ -1,0 +1,12 @@
+book_id: swn-prosto-2023
+title: "Просто о лучших винах. Новая энциклопедия (изд. 2-е, доп.)"
+series: "Simple Wine News"
+publisher: "уточнить по колофону"
+year: 2023
+language: ["rus"]
+source_pdf: "C:\\Users\\LoGun\\YandexDisk\\МОИ ДОКУМЕНТЫ\\РАЗНОЕ\\ЛИТЕРАТУРА\\ВИНО\\Просто о лучших винах. Новая энциклопедия. Изд.2-е, доп. (Simple Wine News) - 2023.pdf"
+intermediates: "C:\\Users\\LoGun\\AppData\\Local\\Temp\\pdf_ocr_swn-prosto"
+pages_total: 239
+method: "structured-facts (ocr: facts) — пересказ своими словами; авторская проза/цитаты НЕ воспроизводятся дословно; кураторские списки/рейтинги/таблицы дайджестом"
+ocr_anchor: "Tesseract -l rus, PSM 1 (скан без текст-слоя) + сверка с PNG"
+notes: "Систематическая OCR-ошибка 3→5 — числа/даты сверять с PNG; потеря ведущей «1»; ёмкости/проценты сверять. Offset фолио определить по первым страницам."

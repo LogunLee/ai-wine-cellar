@@ -1,0 +1,13 @@
+book_id: clarke-spravochnik
+title: "Вино. Новый полный справочник. Позвольте рассказать вам о вине…"
+author: "Оз Кларк (Oz Clarke)"
+series: "Вина и напитки мира"
+publisher: "уточнить по колофону"
+year: 2019
+language: ["rus"]
+source_pdf: "C:\\Users\\LoGun\\YandexDisk\\МОИ ДОКУМЕНТЫ\\РАЗНОЕ\\ЛИТЕРАТУРА\\ВИНО\\Кларк Оз - Вино. Новый полный справочник. Позвольте рассказать вам о вине… - (Вина и напитки мира) - 2019.pdf"
+intermediates: "C:\\Users\\LoGun\\AppData\\Local\\Temp\\pdf_ocr_clarke"
+pages_total: 203
+method: "structured-facts (ocr: facts) — пересказ своими словами; авторская проза/цитаты НЕ воспроизводятся дословно; кураторские списки/рейтинги дайджестом"
+ocr_anchor: "PDF text-layer (есть встроенный текст) + сверка с PNG; Tesseract -l rus как резерв"
+notes: "Систематическая OCR-ошибка 3→5 — числа/даты/рейтинги сверять с PNG. Offset фолио определить по первым страницам."

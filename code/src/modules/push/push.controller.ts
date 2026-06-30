@@ -4,6 +4,7 @@ import type { Request } from 'express'
 import { PushService } from './push.service'
 
 @Controller('admin/push')
+@UseGuards(AuthGuard('jwt'))
 export class PushController {
   constructor(private readonly pushService: PushService) {}
 
@@ -18,7 +19,6 @@ export class PushController {
   }
 
   @Post('send-me')
-  @UseGuards(AuthGuard('jwt'))
   async sendMe(
     @Req() req: Request,
     @Body() body: { title: string; body: string; route?: string },

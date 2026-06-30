@@ -12,38 +12,44 @@ import { AuthGuard } from '@nestjs/passport'
 import { AiModelsService } from './ai-models.service'
 import type { CreateAiModelDto, UpdateAiModelDto } from './ai-models.service'
 
+/** apiKey никогда не покидает сервер — во всех ответах он заменяется маской. */
+function sanitize<T extends { apiKey: string }>(model: T): Omit<T, 'apiKey'> & { apiKeyMask: string } {
+  const { apiKey, ...rest } = model
+  return { ...rest, apiKeyMask: apiKey ? `••••${apiKey.slice(-4)}` : '' }
+}
+
 @Controller('ai-models')
 @UseGuards(AuthGuard('jwt'))
 export class AiModelsController {
   constructor(private readonly aiModelsService: AiModelsService) {}
 
   @Get()
-  findAll() {
-    return this.aiModelsService.findAll()
+  async findAll() {
+    return (await this.aiModelsService.findAll()).map(sanitize)
   }
 
   @Get(':id')
-  findOne(@Param('id') id: string) {
-    return this.aiModelsService.findOne(id)
+  async findOne(@Param('id') id: string) {
+    return sanitize(await this.aiModelsService.findOne(id))
   }
 
   @Post()
-  create(@Body() dto: CreateAiModelDto) {
-    return this.aiModelsService.create(dto)
+  async create(@Body() dto: CreateAiModelDto) {
+    return sanitize(await this.aiModelsService.create(dto))
   }
 
   @Put(':id')
-  update(@Param('id') id: string, @Body() dto: UpdateAiModelDto) {
-    return this.aiModelsService.update(id, dto)
+  async update(@Param('id') id: string, @Body() dto: UpdateAiModelDto) {
+    return sanitize(await this.aiModelsService.update(id, dto))
   }
 
   @Delete(':id')
-  remove(@Param('id') id: string) {
-    return this.aiModelsService.remove(id)
+  async remove(@Param('id') id: string) {
+    return sanitize(await this.aiModelsService.remove(id))
   }
 
   @Post(':id/set-default')
-  setDefault(@Param('id') id: string) {
-    return this.aiModelsService.setDefault(id)
+  async setDefault(@Param('id') id: string) {
+    return sanitize(await this.aiModelsService.setDefault(id))
   }
 }

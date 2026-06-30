@@ -62,6 +62,7 @@ fun DiscountFilters.activeFilterCount(): Int = listOfNotNull(
     seller.takeIf { it.isNotBlank() },
     country.takeIf { it.isNotBlank() },
     grapes.takeIf { it.isNotEmpty() },
+    monosort.takeIf { it },
 ).size
 
 @HiltViewModel

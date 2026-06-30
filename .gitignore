@@ -44,6 +44,9 @@ lerna-debug.log*
 *service-account*.json
 *serviceAccount*.json
 
+# local Claude/IDE config (launch.json, scheduler lock — машинно-локальное)
+.claude/
+
 # temp directory
 .temp
 .tmp

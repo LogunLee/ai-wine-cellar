@@ -1,0 +1,8 @@
+page_0091-0180 ALL DONE (range complete, stopped at 0180 per instructions).
+Regions: Liguria(168-173), Emilia-Romagna(174-193), Toscana(194-221), Umbria(222-237), Le Marche(238-255), Lazio(256-271), Abruzzo e Molise(272-287), Campania(288-303), Puglia(304-319), Basilicata(320-329), Calabria(330-341), Sicilia start(344-347, chapter opener only — continues past 0180, out of range).
+MAPPING: PNG = 2 printed folios (spread). printed_left = 168 + (png-91)*2; printed_page recorded as "L-R" range.
+METHOD NOTES:
+- Several PNGs distorted/skewed (96-99) or had tess columns interleaved line-by-line across both folios (97,106-108,111-113,137,161-162 etc.) — text reconstructed from tess anchors, cross-checked against PNG where legible.
+- Numbers (stats, vintages, DOC %) verified against tess. A few uncertain blend percentages / producer names / DOC list numbers flagged inline with "(сверить)".
+- Recipes/tasting-notes digested (not verbatim); prose compressed; lists/maps captured as структурные факты.
+- Photo-only right folios noted in frontmatter (no body text on those folios).

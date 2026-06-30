@@ -101,6 +101,12 @@ dependencies {
     // ExifInterface
     implementation(libs.androidx.exifinterface)
 
+    // CameraX (встроенная камера сканирования — без подтверждения снимка)
+    implementation(libs.camerax.core)
+    implementation(libs.camerax.camera2)
+    implementation(libs.camerax.lifecycle)
+    implementation(libs.camerax.view)
+
     // Coroutines
     implementation(libs.kotlinx.coroutines.android)
 

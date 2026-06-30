@@ -1,0 +1,46 @@
+# anderson-wines-italy — progress log
+# offset: printed_page = PNG_number - 3 (PNG 0006 = printed p.3, folio visible)
+# front matter: 0001 cover, 0002 title, 0003 copyright (©2006, 8th ed.), 0004 TOC, 0005 full-page photo
+# TOC map (printed pages): soil/sunshine/soul 3; through the ages 5; wine laws & labels 9; review 11;
+#   South & Islands 13 (Sicily 15, Sardinia 19, Calabria 23, Basilicata 26, Apulia 28, Campania 33);
+#   Central Italy 37 (Latium 39, Molise 43, Abruzzi 45, Marches 47, Umbria 51, Tuscany 55);
+#   North by Northwest 63 (Emilia-Romagna 65, Liguria 71, Lombardy 75, Piedmont 78, Valle d'Aosta 85);
+#   Northeast 89 (Veneto 91, Friuli-VG 96, Trentino-Alto Adige 100); Food&wine 105; Glossary 113; Index 114.
+0001-0009 done — front matter + soil/sunshine/soul (p3-4) + through-the-ages (p5-6). offset=PNG-3.
+0010-0015 done — laws&labels (p9-10), review+abbrev key (p11), photos (p8,12). Key: R/W/P/Dr/Sw/Sp/Fz/Ft/VT/Rs/Sup/Ag.
+0016-0021 done — South&Islands opener (p13-14), Sicily narrative+map+full DOCG/DOC/IGT listing (p15-18).
+0022-0024 done — Sardinia narrative+data+listing+map (p19-21).
+0025-0027 done — Sardinia DOC end+IGT (p22), Calabria narrative+listing (p23-24).
+0028-0030 done — Calabria map (p25), Basilicata narrative+data+map+listing+IGT (p26-27).
+0031-0033 done — Apulia narrative+data+full DOC(25)+IGT (p28-30).
+0034-0036 done — Apulia map (p31), Campania map (p32), Campania narrative+data (p33).
+0037-0039 done — Campania DOCG/DOC(17)/IGT (p34-35), section-close photo (p36). END of South&Islands.
+0040-0042 done — Central Italy opener (p37-38), Latium narrative+data (p39). START of Central Italy.
+0043-0045 done — Latium DOC(26) listing+map+IGT (p40-42).
+0046-0048 done — Molise narrative+map+DOC+IGT (p43-44), Abruzzi narrative+data (p45).
+0049-0051 done — Abruzzi map+listing (p46), Marches narrative+data+listing (p47-48).
+0052-0054 done — Marches map (p49), Assisi photo (p50), Umbria narrative+data (p51).
+0055-0057 done — Umbria DOCG/DOC(11)/IGT+map (p52-53), Tuscany-opener photo (p54).
+0058-0060 done — Tuscany narrative (Chianti/Brunello/Vino Nobile/Carmignano/Super Tuscans/Bolgheri) + DOCG(6) + DOC(36) start (p55-57).
+0061-0063 done — Tuscany map legend(DOCG6/DOC36) + map + DOC listing cont. (p58-60).
+0064-0066 done — Tuscany DOC end+IGT (p61), Langhe photo (p62), North-by-Northwest opener (p63). END Central Italy, START North-Central/NW.
+0067-0069 done — North-by-NW end (p64), Emilia-Romagna narrative+data (p65), Bologna photo (p66).
+0070-0072 done — Emilia-Romagna DOCG/DOC(20)/IGT+map (p67-69).
+0073-0075 done — Portofino photo (p70), Liguria narrative+data+DOC(8)+IGT (p71-72).
+0076-0078 done — Liguria map (p73), Lombardy map (p74), Lombardy narrative+data (p75).
+0079-0081 done — Lombardy DOCG/DOC(15)/IGT (p76-77), Piedmont narrative+data (p78).
+0082-0084 done — Piedmont narrative cont. (p79), map (p80), DOCG/DOC legend (p81).
+0085-0087 done — Piedmont DOCG(9)+DOC(43) listing (p82-84).
+0088-0090 done — Valle d'Aosta narrative+map+DOC(1) (p85-86), Mont Blanc photo (p87). END North-Central/NW.
+0091-0093 done — Miramare photo (p88), Northeast opener (p89-90). START Northeast.
+0094-0096 done — Veneto narrative+data+DOCG(3)+DOC(25) start (p91-93).
+0097-0099 done — Veneto DOC end+IGT+map (p94-95), Friuli-VG narrative+data (p96).
+0100-0102 done — Friuli-VG narrative end+map+DOCG/DOC(9)/IGT (p97-99).
+0103-0105 done — Trentino-Alto Adige narrative+data+DOC(7) listing (p100-102).
+0106-0108 done — Trentino-AA map+DOC end+IGT (p103), food-table photo (p104), Italian food&wine essay start (p105). END regional section.
+0109-0111 done — Food&wine essay end + pairing tables ANTIPASTI/PRIMI/SECONDI start (p106-108).
+0112-0114 done — Food&wine pairing tables SECONDI/VERDURA/FORMAGGI/FRUTTA/DOLCI (p109-111). END food chapter.
+0115-0117 done — Glossary A-V (p112-113), Index DOCG+DOC start (p114).
+0118-0120 done — DOC index B-S (p115-117).
+0121-0123 done — DOC index T-Z + IGT index (p118-119), About the author (p120).
+0124-0125 done — bibliography (p121), back cover. COMPLETE: all 125 pages processed.

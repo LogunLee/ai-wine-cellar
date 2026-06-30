@@ -1,5 +1,5 @@
 import { Injectable, Logger } from '@nestjs/common'
-import { toSearchWords, slugToTitle } from '../../shared/util/text.util'
+import { toSearchWords, toMatchWords, slugToTitle } from '../../shared/util/text.util'
 
 const HEADERS = {
   'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
@@ -24,15 +24,82 @@ export class VivinoService {
   // ── Auto-match (used when adding wine to cellar) ─────────────────────────
 
   async findWineUrl(producer: string, name: string, year?: number | null): Promise<string | null> {
+    // Запрос только по производителю запрещён: он матчит ЛЮБОЕ вино этого
+    // производителя со score 1.0 (так La Bruja de Rozas превращалась в El Hombre Bala)
     const queries = [
       [producer, name].filter(Boolean).join(' '),
-      producer,
-    ]
+      name,
+    ].filter((q) => q.trim().length > 1)
+
+    // Слова из названия вина обязаны присутствовать в слаге кандидата
+    const anchorWords = this.anchor(name, producer)
+
     for (const query of queries) {
-      const url = await this.searchBestMatch(query, year)
+      const url = await this.searchBestMatch(query, year, anchorWords)
       if (url) return url
     }
-    return null
+
+    // SSR-поиск Vivino отдаёт не все вина — добиваем через поисковый индекс
+    return this.serpFallback(producer, name, year, anchorWords)
+  }
+
+  /** Поиск карточки через s.jina.ai (site:vivino.com) — когда прямой поиск Vivino пуст. */
+  private async serpFallback(
+    producer: string,
+    name: string,
+    year: number | null | undefined,
+    anchorWords: string[],
+  ): Promise<string | null> {
+    const jinaKey = process.env.JINA_API_KEY
+    if (!jinaKey) return null
+
+    try {
+      const query = [producer, name].filter(Boolean).join(' ').trim()
+      const res = await fetch(
+        `https://s.jina.ai/?q=${encodeURIComponent(`site:vivino.com ${query}`)}`,
+        {
+          headers: {
+            Authorization: `Bearer ${jinaKey}`,
+            Accept: 'application/json',
+            'X-Respond-With': 'no-content',
+          },
+          signal: AbortSignal.timeout(25_000),
+        },
+      )
+      if (!res.ok) return null
+
+      const data = await res.json()
+      const queryWords = toMatchWords(query)
+
+      const candidates = ((data.data ?? []) as any[])
+        .map((d) => {
+          const m = String(d?.url ?? '').match(/vivino\.com\/(?:[a-z]{2}(?:\/[a-z]{2})?\/)?([a-z0-9-]+)\/w\/(\d+)/i)
+          if (!m) return null
+          const slugWords = toSearchWords(m[1])
+          const matched = queryWords.filter((w) => slugWords.includes(w)).length
+          const anchorHit = anchorWords.length === 0 || anchorWords.some((w) => slugWords.includes(w))
+          return { slug: m[1], id: m[2], score: matched / queryWords.length, anchorHit }
+        })
+        .filter((c): c is NonNullable<typeof c> => !!c && c.anchorHit && c.score >= MIN_SCORE)
+        .sort((a, b) => b.score - a.score)
+
+      if (!candidates.length) return null
+
+      const best = candidates[0]
+      const url = `https://www.vivino.com/en/${best.slug}/w/${best.id}${year ? `?year=${year}` : ''}`
+      this.logger.log(`Vivino (SERP): "${query}" year=${year ?? '–'} → ${url} (score=${best.score.toFixed(2)})`)
+      return url
+    } catch (err) {
+      this.logger.warn(`Vivino SERP fallback failed: ${err}`)
+      return null
+    }
+  }
+
+  /** Слова названия вина (без слов производителя и стоп-слов) — якорь против ложных матчей. */
+  private anchor(name: string, producer: string): string[] {
+    const producerWords = new Set(toMatchWords(producer))
+    const nameWords = toMatchWords(name).filter((w) => !producerWords.has(w))
+    return nameWords.length > 0 ? nameWords : toMatchWords(name)
   }
 
   // ── Manual search (user-driven) ──────────────────────────────────────────
@@ -66,7 +133,7 @@ export class VivinoService {
 
   // ── Internal ─────────────────────────────────────────────────────────────
 
-  private async searchBestMatch(query: string, year?: number | null): Promise<string | null> {
+  private async searchBestMatch(query: string, year?: number | null, anchorWords: string[] = []): Promise<string | null> {
     try {
       const html = await this.fetchPage(query)
       if (!html) return null
@@ -83,14 +150,15 @@ export class VivinoService {
       }
       if (!entries.length) return null
 
-      const queryWords = toSearchWords(query)
+      const queryWords = toMatchWords(query)
       const scored = entries.map((e) => {
         const slugWords = toSearchWords(e.slug)
         const matched = queryWords.filter((w) => slugWords.includes(w)).length
-        return { ...e, score: matched / queryWords.length }
+        const anchorHit = anchorWords.length === 0 || anchorWords.some((w) => slugWords.includes(w))
+        return { ...e, score: matched / queryWords.length, anchorHit }
       })
 
-      const viable = scored.filter((e) => e.score >= MIN_SCORE)
+      const viable = scored.filter((e) => e.score >= MIN_SCORE && e.anchorHit)
       if (!viable.length) {
         this.logger.debug(`Vivino: best ${Math.max(...scored.map((e) => e.score)).toFixed(2)} < ${MIN_SCORE} for "${query}" — skipped`)
         return null

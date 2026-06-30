@@ -1,0 +1,12 @@
+book_id: oxford-companion-wine
+title: "The Oxford Companion to Wine (4-е изд.) — рус. перевод-дайджест"
+author: "Jancis Robinson (ред.), Julia Harding"
+publisher: "Oxford University Press"
+year: 2015
+language: ["eng->rus"]
+source_epub: "C:\\Users\\LoGun\\Videos\\Robinson Jancis   - The Oxford Companion to Wine - 2015\\Robinson Jancis   - The Oxford Companion to Wine - 2015.epub"
+intermediates: "C:\\Users\\LoGun\\AppData\\Local\\Temp\\epub_oxford\\docs"
+docs_total: 1029
+dictionary_starts: "doc_0044 (буква A, статья «abboccato»)"
+method: "EN→RU перевод + структурные факты (ocr: facts). Энциклопедия A–Z: одна статья = один блок под ## заголовком. Перевод транформативный (сжатие фактов), НЕ дословное воспроизведение оригинала. Кросс-ссылки (в оригинале — мелкие капители) → «см. …». Метрика (га, гл) сохраняется, US-конверсии опускаются. Подписи авторов статей и библиография — опускаются (для RAG не нужны)."
+notes: "Книга английская, OCR НЕ нужен (EPUB = чистый текст). Главный труд — перевод+пересказ. docs 1–43 — фронт-маттер и тематические указатели; словарь с doc_0044. Перевод делает Claude (решение пользователя: внешние LLM не используем)."

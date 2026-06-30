@@ -9,11 +9,18 @@ async function bootstrap() {
     const app = await NestFactory.create<NestExpressApplication>(AppModule, {
       bodyParser: false,
     })
+    // req.protocol учитывает X-Forwarded-Proto (за прокси Render) — для прокси картинок
+    app.set('trust proxy', true)
 
     const rawFrontendUrl = process.env.FRONTEND_URL || 'http://localhost:5173'
     const frontendUrl = rawFrontendUrl.startsWith('http') ? rawFrontendUrl : `https://${rawFrontendUrl}`
     app.enableCors({
-      origin: [frontendUrl, 'http://localhost:3000'],
+      origin: [
+        frontendUrl,
+        'http://localhost:3000',
+        // фронтенд, открытый с других устройств локальной сети (телефон и т.п.)
+        /^http:\/\/(192\.168\.\d{1,3}\.\d{1,3}|10\.\d{1,3}\.\d{1,3}\.\d{1,3}|172\.(1[6-9]|2\d|3[01])\.\d{1,3}\.\d{1,3}):5173$/,
+      ],
       credentials: true,
     })
 

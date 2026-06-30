@@ -9,6 +9,8 @@ import com.enolo.app.data.dto.AddWineRequest
 import com.enolo.app.data.dto.CellarItemDto
 import com.enolo.app.data.dto.NoteDto
 import com.enolo.app.data.repository.CellarRepository
+import com.enolo.app.util.ExternalResearchPrompt
+import com.enolo.app.util.ImageCompressor
 import dagger.hilt.android.lifecycle.HiltViewModel
 import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.flow.*
@@ -81,11 +83,23 @@ data class CellarUiState(
 @HiltViewModel
 class CellarViewModel @Inject constructor(
     private val repository: CellarRepository,
+    private val externalPrompt: ExternalResearchPrompt,
     @ApplicationContext private val context: Context
 ) : ViewModel() {
 
     private val _uiState = MutableStateFlow(CellarUiState())
     val uiState: StateFlow<CellarUiState> = _uiState.asStateFlow()
+
+    private val _refreshing = MutableStateFlow(false)
+    val refreshing: StateFlow<Boolean> = _refreshing.asStateFlow()
+
+    // Фоновая синхронизация с сервером (крутит значок кнопки синхронизации в шапке).
+    private val _syncing = MutableStateFlow(false)
+    val syncing: StateFlow<Boolean> = _syncing.asStateFlow()
+
+    // Текст для копирования в буфер (one-shot, «внешнее исследование»)
+    private val _clipboardText = MutableStateFlow<String?>(null)
+    val clipboardText: StateFlow<String?> = _clipboardText.asStateFlow()
 
     private val _filters = MutableStateFlow(CellarFilters())
     val filters: StateFlow<CellarFilters> = _filters.asStateFlow()
@@ -110,26 +124,42 @@ class CellarViewModel @Inject constructor(
 
     init { load() }
 
+    /** Применяет список вин к UI-состоянию (без флагов загрузки). */
+    private fun applyItems(items: List<CellarItemDto>) {
+        val currentYear = Calendar.getInstance().get(Calendar.YEAR)
+        _uiState.value = CellarUiState(
+            items          = items,
+            isLoading      = false,
+            totalBottles   = items.sumOf { it.quantity },
+            dueBottles     = items.filter { it.drinkWindowStatus(currentYear) == DrinkWindowStatus.DUE }.sumOf { it.quantity },
+            totalPositions = items.size,
+        )
+    }
+
     fun load() {
+        // 1) Cache-first: моментально показываем погреб из локального кэша (без ожидания сети).
+        val cached = repository.cachedItems()
+        if (!cached.isNullOrEmpty()) applyItems(cached)
+        else _uiState.value = _uiState.value.copy(isLoading = true, error = null)
+        // 2) Фоновая синхронизация с сервером (значок синхронизации крутится).
+        sync()
+    }
+
+    /** Фоновая инкрементальная синхронизация: дельта с сервера, обновляет UI; крутит значок кнопки. */
+    fun sync() {
         viewModelScope.launch {
-            _uiState.value = _uiState.value.copy(isLoading = true, error = null)
-            when (val res = repository.getItems()) {
-                is ApiResult.Success -> {
-                    val items = res.data
-                    val currentYear = Calendar.getInstance().get(Calendar.YEAR)
-                    _uiState.value = CellarUiState(
-                        items          = items,
-                        isLoading      = false,
-                        totalBottles   = items.sumOf { it.quantity },
-                        dueBottles     = items.filter { it.drinkWindowStatus(currentYear) == DrinkWindowStatus.DUE }.sumOf { it.quantity },
-                        totalPositions = items.size,
-                    )
-                }
-                is ApiResult.Error        -> _uiState.value = CellarUiState(error = res.message ?: "Ошибка", isLoading = false)
-                is ApiResult.NetworkError -> _uiState.value = CellarUiState(error = "Нет соединения", isLoading = false)
+            _syncing.value = true
+            when (val res = repository.syncDelta()) {
+                is ApiResult.Success -> applyItems(res.data)
+                is ApiResult.Error        -> if (_uiState.value.items.isEmpty()) _uiState.value = CellarUiState(error = res.message ?: "Ошибка", isLoading = false)
+                is ApiResult.NetworkError -> if (_uiState.value.items.isEmpty()) _uiState.value = CellarUiState(error = "Нет соединения", isLoading = false)
             }
+            _syncing.value = false
         }
     }
+
+    /** URI фото: локальный файл (офлайн) если скачан, иначе URL сервера. */
+    fun photoUri(relativePath: String?) = repository.photoUri(relativePath)
 
     fun onSearchChange(query: String) {
         _filters.value = _filters.value.copy(search = query)
@@ -152,10 +182,16 @@ class CellarViewModel @Inject constructor(
         _filters.value = _filters.value.copy(wineType = wineType, statusPreset = statusPreset, country = country, grapes = grapes)
     }
 
-    fun addWine(request: AddWineRequest, onDone: () -> Unit) {
+    fun addWine(request: AddWineRequest, photoUri: Uri? = null, onDone: () -> Unit) {
         viewModelScope.launch {
             when (val res = repository.add(request)) {
-                is ApiResult.Success -> { load(); onDone() }
+                is ApiResult.Success -> {
+                    // Фото грузим сразу после создания карточки — сжимаем перед отправкой.
+                    if (photoUri != null) {
+                        ImageCompressor.toJpegFile(context, photoUri)?.let { file -> repository.uploadPhoto(res.data.id, file); file.delete() }
+                    }
+                    load(); onDone()
+                }
                 is ApiResult.Error        -> _actionError.value = res.message ?: "Ошибка добавления"
                 is ApiResult.NetworkError -> _actionError.value = "Нет соединения"
             }
@@ -227,7 +263,7 @@ class CellarViewModel @Inject constructor(
 
     fun uploadPhoto(id: String, uri: Uri) {
         viewModelScope.launch {
-            val file = uriToFile(context, uri) ?: return@launch
+            val file = ImageCompressor.toJpegFile(context, uri) ?: return@launch
             when (val res = repository.uploadPhoto(id, file)) {
                 is ApiResult.Success -> load()
                 is ApiResult.Error        -> _actionError.value = res.message ?: "Ошибка загрузки фото"
@@ -269,6 +305,26 @@ class CellarViewModel @Inject constructor(
     fun absolutePhotoUrl(relativePath: String?) = repository.absolutePhotoUrl(relativePath)
 
     fun clearActionError() { _actionError.value = null }
+
+    fun refresh() {
+        viewModelScope.launch {
+            _refreshing.value = true
+            when (val res = repository.syncDelta()) {
+                is ApiResult.Success -> applyItems(res.data)
+                else -> {}
+            }
+            _refreshing.value = false
+        }
+    }
+
+    /** Собирает запрос «внешнего исследования» — UI копирует его в буфер обмена. */
+    fun externalResearch(item: CellarItemDto) {
+        viewModelScope.launch {
+            _clipboardText.value = externalPrompt.build(item.producer, item.name, item.vintageYear)
+        }
+    }
+
+    fun clearClipboardText() { _clipboardText.value = null }
 
     private fun applyFilters(items: List<CellarItemDto>, f: CellarFilters): List<CellarItemDto> {
         val currentYear = Calendar.getInstance().get(Calendar.YEAR)

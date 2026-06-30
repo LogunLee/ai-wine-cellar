@@ -3,11 +3,13 @@ package com.enolo.app.core.di
 import com.enolo.app.core.network.AuthInterceptor
 import com.enolo.app.core.network.HostSelectionInterceptor
 import com.enolo.app.core.network.TokenAuthenticator
+import com.enolo.app.data.api.AiSettingsApi
 import com.enolo.app.data.api.AuthApi
 import com.enolo.app.data.api.CellarApi
 import com.enolo.app.data.api.CountriesApi
 import com.enolo.app.data.api.DiscountsApi
 import com.enolo.app.data.api.PushApi
+import com.enolo.app.data.api.TastingNotesApi
 import com.enolo.app.data.api.VivinoApi
 import com.enolo.app.data.api.WineCriticApi
 import com.enolo.app.data.api.WineSearchApi
@@ -160,4 +162,24 @@ object NetworkModule {
     @Singleton
     fun provideWineCriticApi(retrofit: Retrofit): WineCriticApi =
         retrofit.create(WineCriticApi::class.java)
+
+    @Provides
+    @Singleton
+    fun provideAiSettingsApi(retrofit: Retrofit): AiSettingsApi =
+        retrofit.create(AiSettingsApi::class.java)
+
+    @Provides
+    @Singleton
+    fun provideTastingNotesApi(retrofit: Retrofit): TastingNotesApi =
+        retrofit.create(TastingNotesApi::class.java)
+
+    @Provides
+    @Singleton
+    fun provideFactsApi(retrofit: Retrofit): com.enolo.app.data.api.FactsApi =
+        retrofit.create(com.enolo.app.data.api.FactsApi::class.java)
+
+    @Provides
+    @Singleton
+    fun provideSommelierApi(@Named("longRunningRetrofit") retrofit: Retrofit): com.enolo.app.data.api.SommelierApi =
+        retrofit.create(com.enolo.app.data.api.SommelierApi::class.java)
 }

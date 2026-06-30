@@ -3,6 +3,7 @@ import { Browser, BrowserContext, Page, Response } from 'playwright'
 import { Store } from '@prisma/client'
 import {
   BaseScraper,
+  BlockedError,
   RawScrapedOffer,
   ScraperCallbacks,
   ScraperCheckpointCallbacks,
@@ -182,6 +183,10 @@ export class AmwineScraper extends BaseScraper {
           const emptyState = await this.getEmptyProductsDebugState(page)
           if (emptyState.isServerError) {
             throw new Error(`${label}: server error instead of catalog. title="${emptyState.title}"`)
+          }
+          // Пустой каталог на ПЕРВОЙ итерации = блок/VPN, а не пустая категория.
+          if (pageNum === 1) {
+            throw new BlockedError(`${label}: пустой каталог на первой странице — вероятна блокировка/VPN (0 товаров)`)
           }
           this.logger.log(
             `[Phase 1] No products on ${label} page ${pageNum}, stopping. url=${emptyState.url}`,
@@ -577,6 +582,12 @@ export class AmwineScraper extends BaseScraper {
         lastError = error
 
         if (attempt >= this.maxServerErrorAttempts) break
+
+        // Сеть пропала/сменилась (VPN) — ждём восстановления, не тратя попытки.
+        if (!(await this.checkInternet())) {
+          this.logger.warn(`${label}: сеть недоступна — жду восстановления перед повтором`)
+          await this.waitForConnectivity()
+        }
 
         const delayMs = this.getBackoffDelayMs(attempt)
 

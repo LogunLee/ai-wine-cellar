@@ -6,9 +6,11 @@ import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.sp
 
-// Geist → system default (Roboto), Geist Mono → system monospace (Roboto Mono)
+// Единый шрифт по всему приложению (system default).
+// MerloticMono оставлен как алиас на ту же гарнитуру, чтобы не плодить
+// разные начертания — раньше моноширинный давал «второй шрифт» на экранах.
 val MerloticSans  = FontFamily.Default
-val MerloticMono  = FontFamily.Monospace
+val MerloticMono  = FontFamily.Default
 
 val MerloticTypography = Typography(
     // Основной текст

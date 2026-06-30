@@ -1,5 +1,7 @@
 import { Controller, Post, Body, UseGuards } from '@nestjs/common'
 import { AuthGuard } from '@nestjs/passport'
+import { CurrentUser } from '../../shared/auth/current-user.decorator'
+import type { AuthUser } from '../../shared/auth/current-user.decorator'
 import { WineResearchService } from './wine-research.service'
 import type { WineResearchInput, WineResearchResult } from './wine-research.service'
 
@@ -9,7 +11,10 @@ export class WineResearchController {
   constructor(private readonly wineResearchService: WineResearchService) {}
 
   @Post('research')
-  async research(@Body() body: WineResearchInput): Promise<WineResearchResult> {
-    return this.wineResearchService.researchWine(body)
+  async research(
+    @CurrentUser() user: AuthUser,
+    @Body() body: WineResearchInput,
+  ): Promise<WineResearchResult> {
+    return this.wineResearchService.researchWine(user.userId, body)
   }
 }

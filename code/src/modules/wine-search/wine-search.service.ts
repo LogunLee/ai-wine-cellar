@@ -1,5 +1,5 @@
 import { Injectable, Logger } from '@nestjs/common'
-import { AiModelsService } from '../ai-models/ai-models.service'
+import { AiRouterService, ResolvedAi } from '../ai-settings/ai-router.service'
 
 export interface WineRecognitionResult {
   producer: string
@@ -8,6 +8,7 @@ export interface WineRecognitionResult {
   region?: string
   country?: string
   wineType?: string
+  grapes?: string[] | null
   confidence: number
 }
 
@@ -15,20 +16,19 @@ export interface WineRecognitionResult {
 export class WineSearchService {
   private readonly logger = new Logger(WineSearchService.name)
 
-  constructor(private readonly aiModelsService: AiModelsService) {}
+  constructor(private readonly aiRouter: AiRouterService) {}
 
-  async recognizeWinesFromImages(images: string[]): Promise<WineRecognitionResult[]> {
+  async recognizeWinesFromImages(userId: string, images: string[]): Promise<WineRecognitionResult[]> {
     if (!images || images.length === 0) throw new Error('No images provided')
 
-    const model = await this.aiModelsService.getDefaultForPurpose('IMAGE_RECOGNITION')
+    const resolved = await this.aiRouter.resolveForUser(userId, 'label_recognition')
 
-    const promptConfig = (model.promptConfig as Record<string, unknown>) || {}
-    const systemPrompt = (promptConfig.systemPrompt as string) || this.getDefaultImagePrompt()
+    const systemPrompt =
+      resolved.promptOverride ||
+      (resolved.promptConfig?.systemPrompt as string) ||
+      this.getDefaultImagePrompt()
 
-    const baseUrl = model.baseUrl || 'https://api.mistral.ai/v1'
-    const apiKey = model.apiKey
-
-    this.logger.log(`Using model: ${model.name} at ${baseUrl}, images: ${images.length}`)
+    this.logger.log(`Image recognition via ${resolved.providerCode}/${resolved.modelCode} (${resolved.source}), images: ${images.length}`)
 
     const imageParts = images.map((img) => ({
       type: 'image_url' as const,
@@ -36,7 +36,7 @@ export class WineSearchService {
     }))
 
     const requestBody = {
-      model: model.name,
+      model: resolved.modelCode,
       messages: [
         { role: 'system', content: systemPrompt },
         {
@@ -53,20 +53,20 @@ export class WineSearchService {
       response_format: { type: 'json_object' },
     }
 
-    const response = await fetch(`${baseUrl}/chat/completions`, {
+    const response = await fetch(`${resolved.baseUrl}/chat/completions`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
-        Authorization: `Bearer ${apiKey}`,
+        Authorization: `Bearer ${resolved.apiKey}`,
       },
       body: JSON.stringify(requestBody),
     })
 
     const responseText = await response.text()
-    this.logger.log(`Mistral response status: ${response.status}`)
+    this.logger.log(`Image model response status: ${response.status}`)
 
     if (!response.ok) {
-      this.logger.error(`Mistral API error: ${responseText}`)
+      this.logger.error(`Image model API error: status ${response.status}`)
       throw new Error(`AI model error (${response.status}): ${responseText}`)
     }
 
@@ -74,140 +74,138 @@ export class WineSearchService {
     const content = data.choices?.[0]?.message?.content
 
     if (!content) {
-      this.logger.error(`No content in response: ${JSON.stringify(data)}`)
+      this.logger.error('No content in image model response')
       throw new Error('Empty response from AI model')
     }
 
     this.logger.log(`AI response: ${content.substring(0, 200)}...`)
 
     const parsed = JSON.parse(content)
+    if (resolved.source === 'trial') {
+      await this.aiRouter.commitTrialUse(userId, 'label_recognition')
+    }
     return parsed.wines || []
   }
 
-  async recognizeWineFromText(text: string): Promise<WineRecognitionResult[]> {
+  async recognizeWineFromText(userId: string, text: string): Promise<WineRecognitionResult[]> {
     if (!text || text.trim().length === 0) throw new Error('No text provided')
 
     try {
-      const model = await this.aiModelsService.getDefaultForPurpose('TEXT_PROCESSING')
-      this.logger.log(`Model: ${JSON.stringify(model)}`)
+      const resolved = await this.aiRouter.resolveForUser(userId, 'text_search')
+      const systemPrompt = resolved.promptOverride || this.getDefaultTextPrompt()
 
-      const systemPrompt = this.getDefaultTextPrompt()
+      this.logger.log(`Text search via ${resolved.providerCode}/${resolved.modelCode} (${resolved.source})`)
 
-      const baseUrl = model.baseUrl || 'https://generativelanguage.googleapis.com/v1beta'
-      const apiKey = model.apiKey
-
-      this.logger.log(`Using text model: ${model.name} at ${baseUrl}`)
-
-      const isGemini = baseUrl.includes('generativelanguage.googleapis.com')
-
-      let response: Response
       const lines = text.trim().split('\n').filter(line => line.trim().length > 0)
       const formattedInput = lines.length > 1
         ? `Wine names (one per line):\n${lines.map((line, i) => `${i + 1}. ${line.trim()}`).join('\n')}`
         : text.trim()
 
-      if (isGemini) {
-        const url = `${baseUrl}/models/${model.name}:generateContent?key=${apiKey}`
-        const requestBody = {
-          contents: [
-            {
-              role: 'user',
-              parts: [{ text: `${systemPrompt}\n\n${formattedInput}` }],
-            },
-          ],
-          generationConfig: { responseMimeType: 'application/json' },
-        }
-
-        this.logger.log(`Gemini request URL: ${url}`)
-        this.logger.log(`Gemini request body: ${JSON.stringify(requestBody).substring(0, 500)}`)
-
-        response = await fetch(url, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify(requestBody),
-        })
-      } else {
-        const requestBody = {
-          model: model.name,
-          messages: [
-            { role: 'system', content: systemPrompt },
-            { role: 'user', content: formattedInput },
-          ],
-          response_format: { type: 'json_object' },
-        }
-
-        response = await fetch(`${baseUrl}/chat/completions`, {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            Authorization: `Bearer ${apiKey}`,
-          },
-          body: JSON.stringify(requestBody),
-        })
-      }
-
-      const responseText = await response.text()
-      this.logger.log(`Text model response status: ${response.status}`)
-      this.logger.log(`Text model response body: ${responseText.substring(0, 500)}`)
-
-      if (!response.ok) {
-        this.logger.error(`Text model API error: ${responseText}`)
-        throw new Error(`AI model error (${response.status}): ${responseText}`)
-      }
-
-      const data = JSON.parse(responseText)
-
-      let content: string
-      if (isGemini) {
-        content = data.candidates?.[0]?.content?.parts?.[0]?.text
-      } else {
-        content = data.choices?.[0]?.message?.content
-      }
+      const content = await this.callTextModel(resolved, systemPrompt, formattedInput)
 
       if (!content) {
-        this.logger.error(`No content in response: ${JSON.stringify(data)}`)
         throw new Error('Empty response from AI model')
       }
 
       this.logger.log(`Text AI response: ${content.substring(0, 200)}...`)
 
-    const cleaned = content.replace(/^```json\s*/i, '').replace(/\s*```$/i, '').trim()
-    const parsed = JSON.parse(cleaned)
+      const cleaned = content.replace(/^```json\s*/i, '').replace(/\s*```$/i, '').trim()
+      const parsed = JSON.parse(cleaned)
 
-    const wineTypeMap: Record<string, string> = {
-      red: 'RED',
-      white: 'WHITE',
-      rose: 'ROSE',
-      sparkling: 'SPARKLING',
-      dessert: 'SWEET',
-      fortified: 'FORTIFIED',
-      unknown: 'OTHER',
-    }
+      const wineTypeMap: Record<string, string> = {
+        red: 'RED',
+        white: 'WHITE',
+        rose: 'ROSE',
+        sparkling: 'SPARKLING',
+        dessert: 'SWEET',
+        fortified: 'FORTIFIED',
+        unknown: 'OTHER',
+      }
 
-    const confidenceMap: Record<string, number> = {
-      high: 0.9,
-      medium: 0.7,
-      low: 0.4,
-    }
+      const confidenceMap: Record<string, number> = {
+        high: 0.9,
+        medium: 0.7,
+        low: 0.4,
+      }
 
-    const wines = parsed.wines || [parsed]
+      const wines = parsed.wines || [parsed]
 
-    return wines.map((w: any) => ({
-      producer: w.producer || '',
-      name: w.wineName || w.fullName || '',
-      vintageYear: w.vintage ? parseInt(w.vintage, 10) : undefined,
-      region: w.region || null,
-      country: w.country || null,
-      wineType: wineTypeMap[w.wineType] || 'OTHER',
-      confidence: confidenceMap[w.confidence] || 0.5,
-    }))
+      if (resolved.source === 'trial') {
+        await this.aiRouter.commitTrialUse(userId, 'text_search')
+      }
+
+      return wines.map((w: any) => ({
+        producer: w.producer || '',
+        name: w.wineName || w.fullName || '',
+        vintageYear: w.vintage ? parseInt(w.vintage, 10) : undefined,
+        region: w.region || null,
+        country: w.country || null,
+        wineType: wineTypeMap[w.wineType] || 'OTHER',
+        grapes: Array.isArray(w.grapeVarieties) && w.grapeVarieties.length > 0 ? w.grapeVarieties : null,
+        confidence: confidenceMap[w.confidence] || 0.5,
+      }))
     } catch (error) {
       this.logger.error(`recognizeWineFromText error: ${error}`)
       if (error instanceof Error) {
-        throw new Error(error.message)
+        throw error
       }
       throw error
     }
+  }
+
+  /** Текстовый вызов: OpenAI-совместимый chat/completions либо нативный Gemini generateContent. */
+  private async callTextModel(resolved: ResolvedAi, systemPrompt: string, userInput: string): Promise<string | null> {
+    let response: Response
+
+    if (!resolved.openAiCompatible) {
+      const url = `${resolved.baseUrl}/models/${resolved.modelCode}:generateContent?key=${resolved.apiKey}`
+      const requestBody = {
+        contents: [
+          {
+            role: 'user',
+            parts: [{ text: `${systemPrompt}\n\n${userInput}` }],
+          },
+        ],
+        generationConfig: { responseMimeType: 'application/json' },
+      }
+
+      response = await fetch(url, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(requestBody),
+      })
+    } else {
+      const requestBody = {
+        model: resolved.modelCode,
+        messages: [
+          { role: 'system', content: systemPrompt },
+          { role: 'user', content: userInput },
+        ],
+        response_format: { type: 'json_object' },
+      }
+
+      response = await fetch(`${resolved.baseUrl}/chat/completions`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${resolved.apiKey}`,
+        },
+        body: JSON.stringify(requestBody),
+      })
+    }
+
+    const responseText = await response.text()
+    this.logger.log(`Text model response status: ${response.status}`)
+
+    if (!response.ok) {
+      this.logger.error(`Text model API error: status ${response.status}`)
+      throw new Error(`AI model error (${response.status}): ${responseText}`)
+    }
+
+    const data = JSON.parse(responseText)
+    return resolved.openAiCompatible
+      ? data.choices?.[0]?.message?.content ?? null
+      : data.candidates?.[0]?.content?.parts?.[0]?.text ?? null
   }
 
   private getDefaultTextPrompt(): string {

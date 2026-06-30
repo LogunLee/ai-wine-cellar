@@ -3,6 +3,7 @@ import { Browser, BrowserContext, Page, Response } from 'playwright'
 import { Store } from '@prisma/client'
 import {
   BaseScraper,
+  BlockedError,
   RawScrapedOffer,
   ScraperResult,
   ScraperCallbacks,
@@ -145,13 +146,13 @@ export class SimpleWineScraper extends BaseScraper {
       await randomDelay(page, 30000)
     }
 
-    let pageNum = 1
     const maxPages = process.env.SCRAPER_MAX_PAGES
       ? parseInt(process.env.SCRAPER_MAX_PAGES, 10)
       : null
     const maxGood = this.maxGoodPerPage()
 
     checkpointCallbacks?.startHeartbeat(category)
+    let pageNum = await this.resolveStartPage(checkpointCallbacks, category, 1)
 
     try {
       while (true) {
@@ -165,11 +166,18 @@ export class SimpleWineScraper extends BaseScraper {
         const result = await this.fetchApiPage(page, pageNum, category)
 
         if (result.error) {
-          this.logger.warn(`[Phase 1] API error on page ${pageNum}: ${result.error}`)
-          break
+          const netErr = /network|fetch failed|ECONN|ENOTFOUND|ETIMEDOUT|socket|EAI_AGAIN|terminated|aborted/i.test(result.error)
+          if (netErr) {
+            if (await this.waitForConnectivity()) continue // повтор той же страницы
+            throw new Error(`[Phase 1] ${label}: нет сети на стр.${pageNum} — возобновлю с чекпойнта`)
+          }
+          throw new BlockedError(`[Phase 1] ${label}: API ошибка на стр.${pageNum}: ${result.error} — вероятна блокировка/VPN`)
         }
 
         if (result.items.length === 0) {
+          if (pageNum === 1) {
+            throw new BlockedError(`[Phase 1] ${label}: пустая первая страница — вероятна блокировка/VPN (0 вин)`)
+          }
           this.logger.log(`[Phase 1] No more items on ${label} page ${pageNum}, stopping`)
           break
         }

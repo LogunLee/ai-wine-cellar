@@ -1,26 +1,27 @@
 package com.enolo.app.ui.discounts
 
+import androidx.compose.foundation.BorderStroke
+import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
-import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.Sort
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
+import androidx.compose.ui.BiasAlignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.draw.drawBehind
-import androidx.compose.ui.focus.FocusRequester
-import androidx.compose.ui.focus.focusRequester
-import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.geometry.isSpecified
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.layout.ContentScale
@@ -31,14 +32,17 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextDecoration
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.unit.em
 import androidx.compose.ui.unit.sp
 import androidx.hilt.navigation.compose.hiltViewModel
 import coil.compose.AsyncImage
+import coil.compose.rememberAsyncImagePainter
 import com.enolo.app.data.dto.DiscountOfferDto
+import com.enolo.app.ui.components.MerloticSearchBar
 import com.enolo.app.ui.components.MerloticSheet
+import com.enolo.app.ui.components.MerloticTopBar
 import com.enolo.app.ui.components.SheetDragHandle
 import com.enolo.app.ui.theme.TokenFill as Fill
+import com.enolo.app.ui.theme.TokenGreenDot as GreenDot
 import com.enolo.app.ui.theme.TokenInk as Ink
 import com.enolo.app.ui.theme.TokenInk2 as Ink2
 import com.enolo.app.ui.theme.TokenInk3 as Ink3
@@ -47,8 +51,8 @@ import com.enolo.app.ui.theme.TokenMaroon as Maroon
 import com.enolo.app.ui.theme.TokenRed as Red
 import com.enolo.app.ui.theme.TokenTeal as Teal
 import com.enolo.app.ui.theme.TokenTealWash as TealWash
+import com.enolo.app.ui.theme.TokenYellow as Yellow
 import com.enolo.app.util.Formatters
-import kotlinx.coroutines.delay
 
 // ─── Screen ──────────────────────────────────────────────────────────────────
 
@@ -63,9 +67,7 @@ fun DiscountsScreen(viewModel: DiscountsViewModel = hiltViewModel()) {
     val listState      = rememberLazyListState()
     var showFilters    by remember { mutableStateOf(false) }
     var showSortSheet  by remember { mutableStateOf(false) }
-    var searchActive   by remember { mutableStateOf(false) }
-    var searchText     by remember { mutableStateOf("") }
-    val focusRequester = remember { FocusRequester() }
+    var searchText     by remember { mutableStateOf(filters.search) }
 
     val activePresets = remember(filters) { filters.activePresetKeys() }
     val filterCount   = remember(filters) { filters.activeFilterCount() }
@@ -83,10 +85,6 @@ fun DiscountsScreen(viewModel: DiscountsViewModel = hiltViewModel()) {
         if (shouldLoadMore && !uiState.isLoading && !uiState.isLoadingMore && uiState.hasMore) {
             viewModel.loadMore()
         }
-    }
-
-    LaunchedEffect(searchActive) {
-        if (searchActive) { delay(80); focusRequester.requestFocus() }
     }
 
     // Filter sheet
@@ -111,41 +109,37 @@ fun DiscountsScreen(viewModel: DiscountsViewModel = hiltViewModel()) {
         )
     }
 
-    Column(modifier = Modifier.fillMaxSize().background(Fill)) {
+    Column(modifier = Modifier.fillMaxSize().background(Color.White)) {
 
-        // ── White block: header + quick-filters ──────────────────────────────
-        Surface(color = Color.White, shadowElevation = 2.dp) {
-            Column {
-                if (searchActive) {
-                    SearchHeader(
-                        value          = searchText,
-                        onValueChange  = { v -> searchText = v; viewModel.onSearchChange(v) },
-                        onBack         = { searchActive = false; searchText = ""; viewModel.onSearchChange("") },
-                        focusRequester = focusRequester,
-                    )
-                } else {
-                    DiscountsHeader(
-                        total         = uiState.total,
-                        lastUpdated   = uiState.lastUpdated,
-                        onSearchClick = { searchActive = true },
-                    )
-                }
-
-                QuickFiltersRow(
-                    activePresets    = activePresets,
-                    filterCount      = filterCount,
-                    currentSort      = filters.sort,
-                    onSortClick      = { showSortSheet = true },
-                    onFilterClick    = { showFilters = true },
-                    onPresetToggle   = { viewModel.togglePreset(it) },
-                )
-            }
+        // ── White block: top bar + search + quick-filters ────────────────────
+        Column {
+            DiscountsTopBar(
+                total       = uiState.total,
+                lastUpdated = uiState.lastUpdated,
+            )
+            DiscountSearchBar(
+                value         = searchText,
+                onValueChange = { v -> searchText = v; viewModel.onSearchChange(v) },
+                onClear       = { searchText = ""; viewModel.onSearchChange("") },
+            )
+            QuickFiltersRow(
+                activePresets    = activePresets,
+                filterCount      = filterCount,
+                currentSort      = filters.sort,
+                onSortClick      = { showSortSheet = true },
+                onFilterClick    = { showFilters = true },
+                onPresetToggle   = { viewModel.togglePreset(it) },
+            )
         }
 
         // ── Content ──────────────────────────────────────────────────────────
-        Box(modifier = Modifier.weight(1f)) {
+        androidx.compose.material3.pulltorefresh.PullToRefreshBox(
+            isRefreshing = uiState.isLoading && uiState.items.isNotEmpty(),
+            onRefresh    = { viewModel.refresh() },
+            modifier     = Modifier.weight(1f),
+        ) {
             when {
-                uiState.isLoading -> {
+                uiState.isLoading && uiState.items.isEmpty() -> {
                     Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
                         CircularProgressIndicator(color = Teal, modifier = Modifier.size(36.dp))
                     }
@@ -194,81 +188,39 @@ fun DiscountsScreen(viewModel: DiscountsViewModel = hiltViewModel()) {
 // ─── Header ──────────────────────────────────────────────────────────────────
 
 @Composable
-private fun DiscountsHeader(total: Int, lastUpdated: String?, onSearchClick: () -> Unit) {
-    Row(
-        modifier          = Modifier
-            .fillMaxWidth()
-            .padding(start = 20.dp, end = 16.dp, top = 20.dp, bottom = 8.dp),
-        verticalAlignment = Alignment.CenterVertically,
-    ) {
-        Column(modifier = Modifier.weight(1f)) {
-            Text(
-                text          = "Скидки",
-                fontSize      = 26.sp,
-                fontWeight    = FontWeight.SemiBold,
-                letterSpacing = (-0.02).em,
-                color         = Ink,
-            )
-            val subtitle = when {
-                lastUpdated != null -> "Обновлено ${formatLastUpdated(lastUpdated)}"
-                total > 0           -> "${total} ${pluralOffers(total)}"
-                else                -> null
+private fun DiscountsTopBar(total: Int, lastUpdated: String?) {
+    MerloticTopBar(title = "Скидки") {
+        Column(horizontalAlignment = Alignment.End) {
+            if (lastUpdated != null) {
+                Text("Последнее обновление", fontSize = 12.5.sp, lineHeight = 15.sp, color = Ink3)
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(5.dp),
+                    modifier = Modifier.padding(top = 1.dp),
+                ) {
+                    Box(Modifier.size(7.dp).clip(CircleShape).background(GreenDot))
+                    Text(formatLastUpdated(lastUpdated), fontSize = 12.5.sp, lineHeight = 15.sp, color = Ink2)
+                }
+            } else if (total > 0) {
+                Text("$total ${pluralOffers(total)}", fontSize = 12.5.sp, lineHeight = 15.sp, color = Ink3)
             }
-            if (subtitle != null) {
-                Text(
-                    text       = subtitle,
-                    fontFamily = FontFamily.Monospace,
-                    fontSize   = 11.5.sp,
-                    color      = Ink3,
-                    modifier   = Modifier.padding(top = 2.dp),
-                )
-            }
-        }
-        Box(
-            modifier = Modifier
-                .size(40.dp)
-                .clip(RoundedCornerShape(11.dp))
-                .background(Fill)
-                .clickable(onClick = onSearchClick),
-            contentAlignment = Alignment.Center,
-        ) {
-            Icon(Icons.Default.Search, contentDescription = "Поиск", tint = Ink2, modifier = Modifier.size(20.dp))
         }
     }
 }
 
 @Composable
-private fun SearchHeader(
-    value          : String,
-    onValueChange  : (String) -> Unit,
-    onBack         : () -> Unit,
-    focusRequester : FocusRequester,
+private fun DiscountSearchBar(
+    value         : String,
+    onValueChange : (String) -> Unit,
+    onClear       : () -> Unit,
 ) {
-    Row(
-        modifier          = Modifier.fillMaxWidth().padding(horizontal = 8.dp, vertical = 10.dp),
-        verticalAlignment = Alignment.CenterVertically,
-    ) {
-        IconButton(onClick = onBack) {
-            Icon(Icons.Default.ArrowBack, contentDescription = "Назад", tint = Ink)
-        }
-        BasicTextField(
-            value         = value,
-            onValueChange = onValueChange,
-            modifier      = Modifier.weight(1f).focusRequester(focusRequester),
-            singleLine    = true,
-            textStyle     = TextStyle(fontSize = 16.sp, color = Ink),
-            cursorBrush   = SolidColor(Teal),
-            decorationBox = { inner ->
-                if (value.isEmpty()) Text("Поиск по скидкам…", fontSize = 16.sp, color = Ink3)
-                inner()
-            },
-        )
-        if (value.isNotEmpty()) {
-            IconButton(onClick = { onValueChange("") }) {
-                Icon(Icons.Default.Close, contentDescription = "Очистить", tint = Ink3)
-            }
-        }
-    }
+    MerloticSearchBar(
+        value         = value,
+        onValueChange = onValueChange,
+        onClear       = onClear,
+        placeholder   = "Поиск по названию или производителю",
+        modifier      = Modifier.padding(top = 3.5.dp, bottom = 10.dp),
+    )
 }
 
 // ─── Quick-filter row (with sort button) ─────────────────────────────────────
@@ -283,81 +235,99 @@ private fun QuickFiltersRow(
     onPresetToggle : (String) -> Unit,
 ) {
     val hasActive = filterCount > 0
-    Row(
-        modifier          = Modifier.fillMaxWidth().padding(start = 16.dp, end = 16.dp, bottom = 12.dp),
-        verticalAlignment = Alignment.CenterVertically,
+    val sortIsDefault = currentSort == "discountPercent_desc"
+    // Ничего не закреплено: сортировка, фильтры и пресеты — единая прокручиваемая лента.
+    LazyRow(
+        modifier              = Modifier.fillMaxWidth().padding(start = 16.dp, end = 16.dp, bottom = 12.dp),
+        verticalAlignment     = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(8.dp),
     ) {
         // Sort icon button (active when non-default sort)
-        val sortIsDefault = currentSort == "discountPercent_desc"
-        Box(
-            modifier = Modifier
-                .size(36.dp)
-                .clip(RoundedCornerShape(10.dp))
-                .background(if (!sortIsDefault) TealWash else Fill)
-                .clickable(onClick = onSortClick),
-            contentAlignment = Alignment.Center,
-        ) {
-            Icon(
-                imageVector        = Icons.Default.SwapVert,
-                contentDescription = "Сортировка",
-                tint               = if (!sortIsDefault) Teal else Ink2,
-                modifier           = Modifier.size(18.dp),
-            )
-        }
-
-        // "Фильтры" pill
-        Surface(
-            onClick = onFilterClick,
-            shape   = RoundedCornerShape(18.dp),
-            color   = if (hasActive) TealWash else Fill,
-            border  = if (hasActive) androidx.compose.foundation.BorderStroke(1.dp, Teal) else null,
-            modifier = Modifier.height(36.dp),
-        ) {
-            Row(
-                modifier              = Modifier.padding(horizontal = 12.dp),
-                verticalAlignment     = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(4.dp),
+        item(key = "sort") {
+            Box(
+                modifier = Modifier
+                    .size(36.dp)
+                    .clip(RoundedCornerShape(10.dp))
+                    .background(if (!sortIsDefault) TealWash else Fill)
+                    .clickable(onClick = onSortClick),
+                contentAlignment = Alignment.Center,
             ) {
                 Icon(
-                    imageVector        = Icons.Default.Tune,
-                    contentDescription = null,
-                    modifier           = Modifier.size(14.dp),
-                    tint               = if (hasActive) Teal else Ink2,
-                )
-                Text(
-                    text       = if (hasActive) "Фильтры $filterCount" else "Фильтры",
-                    fontSize   = 13.sp,
-                    fontWeight = FontWeight.Medium,
-                    color      = if (hasActive) Teal else Ink2,
+                    imageVector        = Icons.AutoMirrored.Filled.Sort,
+                    contentDescription = "Сортировка",
+                    tint               = if (!sortIsDefault) Teal else Ink2,
+                    modifier           = Modifier.size(18.dp),
                 )
             }
         }
 
-        // Preset chips (horizontal scroll)
-        LazyRow(
-            modifier              = Modifier.weight(1f),
-            horizontalArrangement = Arrangement.spacedBy(6.dp),
-        ) {
-            items(QUICK_PRESETS, key = { it.key }) { preset ->
-                val active = preset.key in activePresets
-                Surface(
-                    onClick  = { onPresetToggle(preset.key) },
-                    shape    = RoundedCornerShape(18.dp),
-                    color    = if (active) Ink else Fill,
-                    modifier = Modifier.height(36.dp),
+        // "Фильтры" pill — активный сплошной зелёный
+        item(key = "filters") {
+            Surface(
+                onClick  = onFilterClick,
+                shape    = RoundedCornerShape(18.dp),
+                color    = if (hasActive) Teal else Fill,
+                modifier = Modifier.height(36.dp),
+            ) {
+                Row(
+                    modifier              = Modifier.padding(horizontal = 12.dp),
+                    verticalAlignment     = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(4.dp),
                 ) {
+                    Icon(
+                        imageVector        = Icons.Default.Tune,
+                        contentDescription = null,
+                        modifier           = Modifier.size(14.dp),
+                        tint               = if (hasActive) Color.White else Ink2,
+                    )
                     Text(
-                        text       = preset.label,
-                        modifier   = Modifier.padding(horizontal = 12.dp, vertical = 8.dp),
+                        text       = if (hasActive) "Фильтры ($filterCount)" else "Фильтры",
                         fontSize   = 13.sp,
                         fontWeight = FontWeight.Medium,
-                        color      = if (active) Color.White else Ink2,
+                        color      = if (hasActive) Color.White else Ink2,
+                    )
+                }
+            }
+        }
+
+        // Preset chips — с цветной точкой типа вина
+        items(QUICK_PRESETS, key = { it.key }) { preset ->
+            val active = preset.key in activePresets
+            val dot    = presetDotColor(preset.key)
+            Surface(
+                onClick  = { onPresetToggle(preset.key) },
+                shape    = RoundedCornerShape(18.dp),
+                color    = if (active) Color.White else Fill,
+                border   = if (active) BorderStroke(1.5.dp, dot ?: Teal) else null,
+                modifier = Modifier.height(36.dp),
+            ) {
+                Row(
+                    modifier              = Modifier.padding(horizontal = 12.dp),
+                    verticalAlignment     = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(6.dp),
+                ) {
+                    if (dot != null) {
+                        Box(Modifier.size(8.dp).clip(CircleShape).background(dot))
+                    }
+                    Text(
+                        text       = preset.label,
+                        fontSize   = 13.sp,
+                        fontWeight = FontWeight.Medium,
+                        color      = Ink2,
                     )
                 }
             }
         }
     }
+}
+
+/** Цвет точки у пресет-чипа типа вина. */
+private fun presetDotColor(key: String): Color? = when (key) {
+    "RED"       -> Color(0xFF8B1A2A)
+    "WHITE"     -> Yellow
+    "SPARKLING" -> GreenDot
+    "ROSE"      -> Color(0xFFC2185B)
+    else        -> null
 }
 
 // ─── Sort bottom sheet ────────────────────────────────────────────────────────
@@ -432,71 +402,69 @@ private fun DiscountOfferRow(offer: DiscountOfferDto) {
                 .padding(horizontal = 20.dp, vertical = 8.dp),
             verticalAlignment = Alignment.Top,
         ) {
-            // ── Thumbnail 58×72dp ────────────────────────────────────────────
-            Box(modifier = Modifier.size(width = 58.dp, height = 72.dp)) {
+            // ── Thumbnail 64×80dp ────────────────────────────────────────────
+            BoxWithConstraints(modifier = Modifier.size(width = 64.dp, height = 80.dp)) {
                 if (!offer.imageUrl.isNullOrBlank()) {
-                    AsyncImage(
-                        model              = offer.imageUrl,
+                    val painter   = rememberAsyncImagePainter(offer.imageUrl)
+                    val intrinsic = painter.intrinsicSize
+                    val boxWpx    = constraints.maxWidth.toFloat()
+                    val boxHpx    = constraints.maxHeight.toFloat()
+                    // Кроп заполняет ширину; для длинных фото точка на 40% от низа — в центр
+                    val vBias = if (intrinsic.isSpecified && intrinsic.width > 0f && intrinsic.height > 0f) {
+                        val h = intrinsic.height * (boxWpx / intrinsic.width)
+                        if (h <= boxHpx) 0f else (0.2f * h / (h - boxHpx)).coerceIn(-1f, 1f)
+                    } else 1f
+                    Image(
+                        painter            = painter,
                         contentDescription = null,
-                        modifier           = Modifier.fillMaxSize().clip(RoundedCornerShape(11.dp)),
-                        contentScale       = ContentScale.Fit,
+                        contentScale       = ContentScale.Crop,
+                        alignment          = BiasAlignment(0f, vBias),
+                        modifier           = Modifier.fillMaxSize().clip(RoundedCornerShape(13.dp)).background(Color.White),
                     )
                 } else {
-                    Box(
-                        modifier = Modifier
-                            .fillMaxSize()
-                            .clip(RoundedCornerShape(11.dp))
-                            .background(Fill)
-                            .drawBehind {
-                                val step  = 12.dp.toPx()
-                                val sw    = 1.dp.toPx()
-                                val color = Color(0xFFCECCC8)
-                                var x = -size.height
-                                while (x < size.width + size.height) {
-                                    drawLine(color, Offset(x, 0f), Offset(x + size.height, size.height), sw)
-                                    x += step
-                                }
-                            },
-                    )
-                }
-                val pct = offer.discountPercent ?: 0
-                if (pct > 0) {
-                    Surface(
-                        modifier        = Modifier.align(Alignment.TopStart).padding(4.dp),
-                        color           = Red,
-                        shape           = RoundedCornerShape(6.dp),
-                        shadowElevation = 2.dp,
-                    ) {
-                        Text(
-                            text       = "-$pct%",
-                            modifier   = Modifier.padding(horizontal = 5.dp, vertical = 2.dp),
-                            fontSize   = 10.sp,
-                            fontWeight = FontWeight.SemiBold,
-                            color      = Color.White,
-                        )
-                    }
+                    Box(Modifier.fillMaxSize().clip(RoundedCornerShape(13.dp)).background(Fill))
                 }
             }
 
             Spacer(modifier = Modifier.width(12.dp))
 
-            // ── Info column: exactly 72dp, SpaceBetween ───────────────────────
+            // ── Info column: компактно, цена сразу под типом/страной ──────────
             Column(
-                modifier            = Modifier.weight(1f).height(72.dp),
-                verticalArrangement = Arrangement.SpaceBetween,
+                modifier            = Modifier.weight(1f),
+                verticalArrangement = Arrangement.spacedBy(5.dp),
             ) {
-                // Top: name + type/country
+                // Top: name (+ discount chip справа сверху) + type/country
                 Column {
                     val displayName = offer.fullName ?: offer.wineName ?: offer.wineNameRaw ?: "—"
-                    Text(
-                        text       = displayName,
-                        fontSize   = 13.5.sp,
-                        fontWeight = FontWeight.SemiBold,
-                        maxLines   = 2,
-                        overflow   = TextOverflow.Ellipsis,
-                        color      = Ink,
-                        lineHeight = 17.sp,
-                    )
+                    val pct = offer.discountPercent ?: 0
+                    Row(verticalAlignment = Alignment.Top) {
+                        Text(
+                            text       = displayName,
+                            fontSize   = 13.5.sp,
+                            fontWeight = FontWeight.SemiBold,
+                            maxLines   = 2,
+                            overflow   = TextOverflow.Ellipsis,
+                            color      = Ink,
+                            lineHeight = 17.sp,
+                            modifier   = Modifier.weight(1f),
+                        )
+                        if (pct > 0) {
+                            Spacer(Modifier.width(8.dp))
+                            Surface(
+                                color           = Red,
+                                shape           = RoundedCornerShape(7.dp),
+                                shadowElevation = 2.dp,
+                            ) {
+                                Text(
+                                    text       = "-$pct%",
+                                    modifier   = Modifier.padding(horizontal = 6.dp, vertical = 2.dp),
+                                    fontSize   = 11.sp,
+                                    fontWeight = FontWeight.SemiBold,
+                                    color      = Color.White,
+                                )
+                            }
+                        }
+                    }
                     val sub = listOfNotNull(
                         Formatters.wineTypeRu(offer.wineType).takeIf { it.isNotBlank() },
                         offer.country,
@@ -551,11 +519,6 @@ private fun DiscountOfferRow(offer: DiscountOfferDto) {
                 }
             }
         }
-
-        HorizontalDivider(
-            color    = Line,
-            modifier = Modifier.padding(start = 90.dp),
-        )
     }
 }
 

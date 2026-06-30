@@ -4,6 +4,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.FavoriteBorder
 import androidx.compose.material.icons.filled.Home
 import androidx.compose.material.icons.filled.LocalOffer
+import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material.icons.filled.WineBar
 import androidx.compose.material3.*
 import androidx.compose.runtime.Composable
@@ -26,6 +27,7 @@ val bottomNavItems = listOf(
     BottomNavItem("discounts", "Скидки",    Icons.Default.LocalOffer),
     BottomNavItem("cellar",    "Погреб",    Icons.Default.WineBar),
     BottomNavItem("favorites", "Избранное", Icons.Default.FavoriteBorder),
+    BottomNavItem("settings",  "Настройки", Icons.Default.Settings),
 )
 
 @Composable

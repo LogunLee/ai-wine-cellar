@@ -39,6 +39,11 @@ class RootViewModel @Inject constructor(
     private val _pendingRoute = MutableStateFlow<String?>(null)
     val pendingRoute: StateFlow<String?> = _pendingRoute.asStateFlow()
 
+    // Одноразовое действие для главного экрана: "scan" | "gallery".
+    // Используется, когда из погреба запускают распознавание (тот же поток, что на главной).
+    private val _pendingHomeAction = MutableStateFlow<String?>(null)
+    val pendingHomeAction: StateFlow<String?> = _pendingHomeAction.asStateFlow()
+
     init {
         viewModelScope.launch {
             val token = sessionManager.accessTokenBlocking()
@@ -46,13 +51,12 @@ class RootViewModel @Inject constructor(
                 _authState.value = AuthState.LOGGED_OUT
                 return@launch
             }
-            when (authRepository.getMe()) {
-                is ApiResult.Success -> _authState.value = AuthState.LOGGED_IN
-                else -> {
-                    _authState.value = if (!sessionManager.accessTokenBlocking().isNullOrEmpty())
-                        AuthState.LOGGED_IN else AuthState.LOGGED_OUT
-                }
-            }
+            // Есть сохранённый токен → СРАЗУ показываем приложение (оптимистично), не дожидаясь
+            // сетевой проверки getMe(). Иначе при недоступном сервере пользователь видит белый
+            // экран со спиннером до таймаута (~30с). Проверку гоняем в фоне: при 401
+            // TokenAuthenticator очистит токен, и коллектор isLoggedIn ниже переведёт в LOGGED_OUT.
+            _authState.value = AuthState.LOGGED_IN
+            authRepository.getMe()
         }
         viewModelScope.launch {
             sessionManager.isLoggedIn.collect { loggedIn ->
@@ -72,6 +76,14 @@ class RootViewModel @Inject constructor(
 
     fun clearPendingRoute() {
         _pendingRoute.value = null
+    }
+
+    fun requestHomeAction(action: String) {
+        _pendingHomeAction.value = action
+    }
+
+    fun clearHomeAction() {
+        _pendingHomeAction.value = null
     }
 }
 

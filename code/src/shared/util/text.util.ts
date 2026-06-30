@@ -15,3 +15,15 @@ export function toSearchWords(text: string): string[] {
 export function slugToTitle(slug: string): string {
   return slug.replace(/-/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase())
 }
+
+/** Артикли/предлоги винных языков — шум для матчинга ("La Bruja DE Rozas"). */
+const STOPWORDS = new Set([
+  'de', 'la', 'el', 'los', 'las', 'del', 'le', 'les', 'du', 'des', 'da', 'di',
+  'della', 'delle', 'il', 'lo', 'the', 'of', 'and', 'et', 'y', 'e', 'von', 'zu',
+])
+
+/** Слова для скоринга совпадений: как toSearchWords, но без стоп-слов. */
+export function toMatchWords(text: string): string[] {
+  const words = toSearchWords(text).filter((w) => !STOPWORDS.has(w))
+  return words.length > 0 ? words : toSearchWords(text)
+}

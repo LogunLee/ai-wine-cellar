@@ -26,6 +26,14 @@ class SettingsStore @Inject constructor(
     private val KEY_REFRESH_TOKEN = stringPreferencesKey("refresh_token")
     private val KEY_DISCOUNT_SORT = stringPreferencesKey("discount_sort")
     private val KEY_FCM_TOKEN     = stringPreferencesKey("fcm_token")
+    private val KEY_SMART_HISTORY = stringPreferencesKey("smart_search_history")
+    private val KEY_NOTES_SYNCED_AT = stringPreferencesKey("notes_synced_at")
+    private val KEY_CELLAR_SYNCED_AT = stringPreferencesKey("cellar_synced_at")
+
+    /** История запросов умного поиска (новые сверху). Хранится строками через \n. */
+    val smartSearchHistoryFlow: Flow<List<String>> = context.dataStore.data.map { prefs ->
+        prefs[KEY_SMART_HISTORY]?.split("\n")?.filter { it.isNotBlank() } ?: emptyList()
+    }
 
     val discountSortFlow: Flow<String> = context.dataStore.data.map { prefs ->
         prefs[KEY_DISCOUNT_SORT] ?: "discountPercent_desc"
@@ -60,6 +68,32 @@ class SettingsStore @Inject constructor(
             prefs[KEY_ACCESS_TOKEN] = accessToken
             prefs[KEY_REFRESH_TOKEN] = refreshToken
         }
+    }
+
+    suspend fun addSmartSearchQuery(query: String) {
+        val q = query.trim().replace(Regex("\\s+"), " ")
+        if (q.isEmpty()) return
+        context.dataStore.edit { prefs ->
+            val existing = prefs[KEY_SMART_HISTORY]?.split("\n")?.filter { it.isNotBlank() } ?: emptyList()
+            val updated  = (listOf(q) + existing.filterNot { it.equals(q, ignoreCase = true) }).take(20)
+            prefs[KEY_SMART_HISTORY] = updated.joinToString("\n")
+        }
+    }
+
+    /** Серверное время последней успешной синхронизации заметок (для дельта-синка). */
+    suspend fun notesSyncedAt(): String? =
+        context.dataStore.data.first()[KEY_NOTES_SYNCED_AT]?.takeIf { it.isNotBlank() }
+
+    suspend fun setNotesSyncedAt(serverTime: String) {
+        context.dataStore.edit { prefs -> prefs[KEY_NOTES_SYNCED_AT] = serverTime }
+    }
+
+    /** Серверное время последней успешной синхронизации погреба (для дельта-синка). */
+    suspend fun cellarSyncedAt(): String? =
+        context.dataStore.data.first()[KEY_CELLAR_SYNCED_AT]?.takeIf { it.isNotBlank() }
+
+    suspend fun setCellarSyncedAt(serverTime: String) {
+        context.dataStore.edit { prefs -> prefs[KEY_CELLAR_SYNCED_AT] = serverTime }
     }
 
     suspend fun setFcmToken(token: String?) {

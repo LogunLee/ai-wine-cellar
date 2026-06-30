@@ -20,8 +20,31 @@ data class WineRecognitionResult(
     val region: String? = null,
     val country: String? = null,
     val wineType: String? = null,
+    val grapes: List<String>? = null,
     val confidence: Double = 0.5
 )
+
+@Serializable
+data class EnrichPreviewRequest(
+    val producer: String,
+    val name: String,
+    val vintageYear: Int? = null,
+)
+
+@Serializable
+data class EnrichPreviewDto(
+    val vivinoUrl: String? = null,
+    val wineSearcherUrl: String? = null,
+    val criticScores: Map<String, Int>? = null,
+)
+
+@Serializable
+data class PhotoCandidatesDto(
+    val images: List<String> = emptyList(),
+)
+
+@Serializable
+data class PhotoFromUrlRequest(val imageUrl: String)
 
 @Serializable
 data class RecognizeResponse(

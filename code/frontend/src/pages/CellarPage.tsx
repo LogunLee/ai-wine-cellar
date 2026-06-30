@@ -366,7 +366,7 @@ const CellarPage = () => {
         ? new Date(item.createdAt).toLocaleDateString('ru-RU')
         : '',
       'Фото URL': item.photoPath
-        ? (item.photoPath.startsWith('http') ? item.photoPath : `${env.API_URL}/${item.photoPath}`)
+        ? (item.photoPath.startsWith('http') ? item.photoPath : `${env.API_URL}${item.photoPath}`)
         : '',
     }))
 
@@ -563,7 +563,7 @@ const CellarPage = () => {
                           {colKey === 'photo' ? (
                             item.photoPath ? (
                               <img
-                                src={item.photoPath.startsWith('http') ? item.photoPath : `${env.API_URL}/${item.photoPath}`}
+                                src={item.photoPath.startsWith('http') ? item.photoPath : `${env.API_URL}${item.photoPath}`}
                                 alt=""
                                 style={{ width: 40, height: 54, objectFit: 'contain', borderRadius: 4, background: '#f5f3f0', display: 'block' }}
                               />

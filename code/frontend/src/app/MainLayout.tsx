@@ -25,6 +25,7 @@ import {
   Person,
   Percent,
   FavoriteBorder,
+  EditNote,
   ChevronLeft,
   ChevronRight,
 } from '@mui/icons-material'
@@ -59,9 +60,10 @@ export const MainLayout = () => {
 
   const menuItems = [
     { text: 'Погреб', path: '/cellar', icon: <Liquor /> },
+    { text: 'Заметки', path: '/notes', icon: <EditNote /> },
     { text: 'Скидки', path: '/discounts', icon: <Percent /> },
     { text: 'Избранное', path: '/favorites', icon: <FavoriteBorder /> },
-    { text: 'Профиль', path: '/profile', icon: <Person /> },
+    { text: 'Настройки', path: '/settings', icon: <Person /> },
   ]
 
   const avatarUrl = user?.avatarPath ? `${env.API_URL}${user.avatarPath}` : null

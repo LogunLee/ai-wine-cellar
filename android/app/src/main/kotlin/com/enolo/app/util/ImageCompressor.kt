@@ -10,6 +10,7 @@ import androidx.exifinterface.media.ExifInterface
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import java.io.ByteArrayOutputStream
+import java.io.File
 import java.io.InputStream
 
 object ImageCompressor {
@@ -21,30 +22,38 @@ object ImageCompressor {
      * Returns pure base64 (no data:... prefix) — matches what the backend expects.
      */
     suspend fun toBase64(context: Context, uri: Uri): String = withContext(Dispatchers.IO) {
+        Base64.encodeToString(compressBytes(context, uri), Base64.NO_WRAP)
+    }
+
+    /**
+     * Сжатый JPEG в файл в cacheDir (для загрузки фото бутылки на сервер). Возвращает файл
+     * или null при ошибке. Так фото бутылок не уходят на сервер оригиналами в несколько МБ.
+     */
+    suspend fun toJpegFile(context: Context, uri: Uri): File? = withContext(Dispatchers.IO) {
+        runCatching {
+            val bytes = compressBytes(context, uri)
+            val f = File(context.cacheDir, "upload_${System.currentTimeMillis()}.jpg")
+            f.writeBytes(bytes)
+            f
+        }.getOrNull()
+    }
+
+    /** Декод + EXIF-поворот + масштаб до MAX_SIDE + JPEG с подбором качества под MAX_BYTES. */
+    private fun compressBytes(context: Context, uri: Uri): ByteArray {
         val inputStream: InputStream = context.contentResolver.openInputStream(uri)
             ?: throw IllegalArgumentException("Cannot open URI: $uri")
-
-        // Read and fix orientation
         var bitmap = BitmapFactory.decodeStream(inputStream)
         inputStream.close()
 
-        // Fix EXIF rotation
         bitmap = fixOrientation(context, uri, bitmap)
 
-        // Scale down if needed
         val w = bitmap.width
         val h = bitmap.height
         if (w > MAX_SIDE || h > MAX_SIDE) {
             val scale = minOf(MAX_SIDE.toFloat() / w, MAX_SIDE.toFloat() / h)
-            bitmap = Bitmap.createScaledBitmap(
-                bitmap,
-                (w * scale).toInt(),
-                (h * scale).toInt(),
-                true
-            )
+            bitmap = Bitmap.createScaledBitmap(bitmap, (w * scale).toInt(), (h * scale).toInt(), true)
         }
 
-        // Compress with quality reduction loop
         var quality = 85
         var bytes: ByteArray
         do {
@@ -53,8 +62,7 @@ object ImageCompressor {
             bytes = out.toByteArray()
             quality -= 10
         } while (bytes.size > MAX_BYTES && quality >= 10)
-
-        Base64.encodeToString(bytes, Base64.NO_WRAP)
+        return bytes
     }
 
     private fun fixOrientation(context: Context, uri: Uri, bitmap: Bitmap): Bitmap {

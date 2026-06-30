@@ -9,50 +9,52 @@ import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.*
 import androidx.compose.foundation.layout.*
+import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.automirrored.filled.Sort
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.draw.drawBehind
-import androidx.compose.ui.focus.FocusRequester
-import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.SolidColor
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.input.nestedscroll.NestedScrollConnection
 import androidx.compose.ui.input.nestedscroll.NestedScrollSource
 import androidx.compose.ui.input.nestedscroll.nestedScroll
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalUriHandler
 import androidx.compose.ui.text.TextStyle
-import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.unit.em
 import androidx.compose.ui.unit.sp
 import androidx.core.content.ContextCompat
 import androidx.core.content.FileProvider
 import androidx.hilt.navigation.compose.hiltViewModel
 import coil.compose.AsyncImage
 import com.enolo.app.data.dto.CellarItemDto
+import com.enolo.app.ui.components.FilterChipGroup
+import com.enolo.app.ui.components.MerloticSearchBar
+import com.enolo.app.ui.components.MerloticTopBar
 import com.enolo.app.ui.components.MerloticSheet
+import com.enolo.app.ui.components.SearchBarActionButton
 import com.enolo.app.ui.components.SheetDragHandle
 import com.enolo.app.ui.theme.TokenFill as Fill
-import com.enolo.app.ui.theme.TokenGoldInk as GoldText
-import com.enolo.app.ui.theme.TokenGoldWash as GoldBg
+import com.enolo.app.ui.theme.TokenGreenDot as GreenDot
 import com.enolo.app.ui.theme.TokenInk as Ink
 import com.enolo.app.ui.theme.TokenInk2 as Ink2
 import com.enolo.app.ui.theme.TokenInk3 as Ink3
@@ -63,14 +65,18 @@ import com.enolo.app.ui.theme.TokenTeal as Teal
 import com.enolo.app.ui.theme.TokenTealWash as TealWash
 import com.enolo.app.ui.theme.TokenYellow as Gold
 import com.enolo.app.util.Formatters
-import kotlinx.coroutines.delay
 import java.io.File
 
 // ─── Screen ──────────────────────────────────────────────────────────────────
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun CellarScreen(viewModel: CellarViewModel = hiltViewModel()) {
+fun CellarScreen(
+    onNavigateToSmartSearch: () -> Unit = {},
+    onRequestScan: () -> Unit = {},
+    onRequestGallery: () -> Unit = {},
+    viewModel: CellarViewModel = hiltViewModel(),
+) {
     val uiState            by viewModel.uiState.collectAsState()
     val filters            by viewModel.filters.collectAsState()
     val filteredItems      by viewModel.filteredItems.collectAsState()
@@ -78,7 +84,19 @@ fun CellarScreen(viewModel: CellarViewModel = hiltViewModel()) {
     val actionError        by viewModel.actionError.collectAsState()
     val availableCountries by viewModel.availableCountries.collectAsState()
     val availableGrapes    by viewModel.availableGrapes.collectAsState()
+    val refreshing         by viewModel.refreshing.collectAsState()
+    val syncing            by viewModel.syncing.collectAsState()
+    val clipboardText      by viewModel.clipboardText.collectAsState()
     val context            = LocalContext.current
+    val clipboard          = androidx.compose.ui.platform.LocalClipboardManager.current
+
+    LaunchedEffect(clipboardText) {
+        clipboardText?.let { text ->
+            clipboard.setText(androidx.compose.ui.text.AnnotatedString(text))
+            viewModel.clearClipboardText()
+            android.widget.Toast.makeText(context, "Описание для поиска информации о вине скопировано в буфер обмена", android.widget.Toast.LENGTH_LONG).show()
+        }
+    }
 
     // ── Sheet / dialog state ──────────────────────────────────────────────
     // sheet values: null | "add" | "actions" | "filters"
@@ -100,14 +118,18 @@ fun CellarScreen(viewModel: CellarViewModel = hiltViewModel()) {
     var vivinoLinkItem        by remember { mutableStateOf<CellarItemDto?>(null) }
     var wineSearcherLinkItem  by remember { mutableStateOf<CellarItemDto?>(null) }
 
-    // Search in header
-    var searchActive  by remember { mutableStateOf(false) }
-    var searchText    by remember { mutableStateOf("") }
-    val focusRequester = remember { FocusRequester() }
-    var showSortSheet by remember { mutableStateOf(false) }
+    // Search in header (постоянная строка)
+    var searchText      by remember { mutableStateOf(filters.search) }
+    var showSortSheet   by remember { mutableStateOf(false) }
 
-    LaunchedEffect(searchActive) {
-        if (searchActive) { delay(80); focusRequester.requestFocus() }
+    // Кнопки добавления: видны при скролле, прячутся через 2с бездействия.
+    val listState   = rememberLazyListState()
+    var addFabsVisible by remember { mutableStateOf(true) }
+    val scrollSignal = remember { derivedStateOf { listState.firstVisibleItemIndex to listState.firstVisibleItemScrollOffset } }
+    LaunchedEffect(scrollSignal.value, listState.isScrollInProgress) {
+        addFabsVisible = true
+        kotlinx.coroutines.delay(2000)
+        addFabsVisible = false
     }
 
     // Photo launchers
@@ -131,14 +153,6 @@ fun CellarScreen(viewModel: CellarViewModel = hiltViewModel()) {
 
     // ── Dialogs ───────────────────────────────────────────────────────────
 
-    if (showManualAdd) {
-        EditWineDialog(
-            item      = null,
-            onConfirm = { req -> viewModel.addWine(req) { showManualAdd = false } },
-            onDismiss = { showManualAdd = false },
-            error     = actionError,
-        )
-    }
     editItem?.let { item ->
         EditWineDialog(
             item      = item,
@@ -174,6 +188,8 @@ fun CellarScreen(viewModel: CellarViewModel = hiltViewModel()) {
 
     if (activeSheet == "add") {
         CellarAddSheet(
+            onScan    = { activeSheet = null; onRequestScan() },
+            onGallery = { activeSheet = null; onRequestGallery() },
             onManual  = { activeSheet = null; showManualAdd = true },
             onDismiss = { activeSheet = null },
         )
@@ -181,7 +197,7 @@ fun CellarScreen(viewModel: CellarViewModel = hiltViewModel()) {
     if (activeSheet == "actions" && actionItem != null) {
         CellarActionSheet(
             item           = actionItem!!,
-            photoUrl       = viewModel.absolutePhotoUrl(actionItem!!.photoPath),
+            photoUrl       = viewModel.photoUri(actionItem!!.photoPath),
             onEdit         = { activeSheet = null; editItem = actionItem },
             onNote         = { activeSheet = null; viewModel.loadNote(actionItem!!.id); noteItem = actionItem },
             onConsume      = { viewModel.consumeOne(actionItem!!) { activeSheet = null } },
@@ -198,6 +214,7 @@ fun CellarScreen(viewModel: CellarViewModel = hiltViewModel()) {
             },
             onLinkVivino        = { vivinoLinkItem = actionItem; activeSheet = null },
             onLinkWineSearcher  = { wineSearcherLinkItem = actionItem; activeSheet = null },
+            onExternalResearch  = { viewModel.externalResearch(actionItem!!) },
             onDismiss           = { activeSheet = null },
         )
     }
@@ -277,45 +294,35 @@ fun CellarScreen(viewModel: CellarViewModel = hiltViewModel()) {
             onDismiss      = { showSortSheet = false },
         )
     }
-
     // ── Main layout ───────────────────────────────────────────────────────
 
     Box(modifier = Modifier.fillMaxSize().background(Color.White)) {
         Column(modifier = Modifier.fillMaxSize().background(Color.White)) {
-            // White block: header + AI search + quick filters
-            Surface(color = Color.White, shadowElevation = 1.dp) {
-                Column {
-                    if (searchActive) {
-                        CellarSearchHeader(
-                            value          = searchText,
-                            onValueChange  = { v -> searchText = v; viewModel.onSearchChange(v) },
-                            onBack         = { searchActive = false; searchText = ""; viewModel.onSearchChange("") },
-                            focusRequester = focusRequester,
-                        )
-                    } else {
-                        CellarHeader(
-                            totalBottles   = uiState.totalBottles,
-                            dueBottles     = uiState.dueBottles,
-                            totalPositions = uiState.totalPositions,
-                        )
-                        CellarAiSearchBar(
-                            onSearchClick = { searchActive = true },
-                            onAiClick     = { /* AI stub — coming soon */ },
-                        )
-                    }
-                    CellarQuickFiltersRow(
-                        activePresets  = remember(filters) { filters.activePresetKeys() },
-                        filterCount    = remember(filters) { filters.activeFilterCount() },
-                        currentSort    = filters.sort,
-                        onSortClick    = { showSortSheet = true },
-                        onFilterClick  = { activeSheet = "filters" },
-                        onPresetToggle = { viewModel.togglePreset(it) },
-                    )
-                }
+            // White block: top bar + search + quick filters
+            Column {
+                CellarTopBar(totalBottles = uiState.totalBottles, syncing = syncing, onSync = { viewModel.sync() })
+                CellarSearchBar(
+                    value         = searchText,
+                    onValueChange = { v -> searchText = v; viewModel.onSearchChange(v) },
+                    onClear       = { searchText = ""; viewModel.onSearchChange("") },
+                    onAiClick     = onNavigateToSmartSearch,
+                )
+                CellarQuickFiltersRow(
+                    activePresets  = remember(filters) { filters.activePresetKeys() },
+                    filterCount    = remember(filters) { filters.activeFilterCount() },
+                    currentSort    = filters.sort,
+                    onSortClick    = { showSortSheet = true },
+                    onFilterClick  = { activeSheet = "filters" },
+                    onPresetToggle = { viewModel.togglePreset(it) },
+                )
             }
 
             // Content
-            Box(modifier = Modifier.weight(1f)) {
+            androidx.compose.material3.pulltorefresh.PullToRefreshBox(
+                isRefreshing = refreshing,
+                onRefresh    = { viewModel.refresh() },
+                modifier     = Modifier.weight(1f),
+            ) {
                 when {
                     uiState.isLoading -> {
                         Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
@@ -344,11 +351,16 @@ fun CellarScreen(viewModel: CellarViewModel = hiltViewModel()) {
                         )
                     }
                     else -> {
-                        LazyColumn(modifier = Modifier.fillMaxSize()) {
+                        LazyColumn(
+                            state = listState,
+                            modifier = Modifier.fillMaxSize(),
+                            contentPadding = PaddingValues(top = 8.dp),
+                            verticalArrangement = Arrangement.spacedBy(12.dp),
+                        ) {
                             items(filteredItems, key = { it.id }) { item ->
-                                CellarBottleRow(
+                                CellarWineCard(
                                     item     = item,
-                                    photoUrl = viewModel.absolutePhotoUrl(item.photoPath),
+                                    photoUrl = viewModel.photoUri(item.photoPath),
                                     onClick  = { actionItem = item; activeSheet = "actions" },
                                     onMenu   = { actionItem = item; activeSheet = "actions" },
                                 )
@@ -360,13 +372,31 @@ fun CellarScreen(viewModel: CellarViewModel = hiltViewModel()) {
             }
         }
 
-        FloatingActionButton(
-            onClick        = { activeSheet = "add" },
-            modifier       = Modifier.align(Alignment.BottomEnd).padding(end = 16.dp, bottom = 16.dp),
-            containerColor = Teal,
-            contentColor   = Color.White,
+        // Три отдельные кнопки добавления (размером с обычный FAB), прячутся при бездействии.
+        AnimatedVisibility(
+            visible  = addFabsVisible,
+            modifier = Modifier.align(Alignment.BottomEnd).padding(end = 16.dp, bottom = 16.dp),
         ) {
-            Icon(Icons.Default.Add, contentDescription = "Добавить")
+            Column(horizontalAlignment = Alignment.End, verticalArrangement = Arrangement.spacedBy(14.dp)) {
+                FloatingActionButton(onClick = onRequestScan, containerColor = Teal, contentColor = Color.White) {
+                    Icon(Icons.Default.CameraAlt, contentDescription = "Сканировать камерой")
+                }
+                FloatingActionButton(onClick = onRequestGallery, containerColor = Teal, contentColor = Color.White) {
+                    Icon(Icons.Default.PhotoLibrary, contentDescription = "Из галереи")
+                }
+                FloatingActionButton(onClick = { showManualAdd = true }, containerColor = Teal, contentColor = Color.White) {
+                    Icon(Icons.Default.Edit, contentDescription = "Ввести вручную")
+                }
+            }
+        }
+
+        // Полноэкранная форма добавления вина (поверх всего)
+        if (showManualAdd) {
+            AddWineScreen(
+                onSave    = { req, photoUri -> viewModel.addWine(req, photoUri) { showManualAdd = false } },
+                onDismiss = { showManualAdd = false },
+                error     = actionError,
+            )
         }
     }
 }
@@ -374,128 +404,34 @@ fun CellarScreen(viewModel: CellarViewModel = hiltViewModel()) {
 // ─── Header ──────────────────────────────────────────────────────────────────
 
 @Composable
-private fun CellarHeader(totalBottles: Int, dueBottles: Int, totalPositions: Int) {
-    Column(
-        modifier = Modifier
-            .fillMaxWidth()
-            .padding(start = 20.dp, end = 20.dp, top = 20.dp, bottom = 8.dp),
-    ) {
-        Text(
-            text          = "Погреб",
-            fontSize      = 26.sp,
-            fontWeight    = FontWeight.SemiBold,
-            letterSpacing = (-0.02).em,
-            color         = Ink,
-        )
-        if (totalBottles > 0 || totalPositions > 0) {
-            Spacer(Modifier.height(3.dp))
-            Row(
-                verticalAlignment     = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(6.dp),
-            ) {
-                Text(
-                    text       = "${totalBottles} ${pluralBottles(totalBottles)}",
-                    fontFamily = FontFamily.Monospace,
-                    fontSize   = 12.5.sp,
-                    color      = Ink3,
-                )
-                if (dueBottles > 0) {
-                    Text("·", fontSize = 12.5.sp, color = Ink3)
-                    Box(
-                        modifier             = Modifier.size(7.dp).clip(CircleShape).background(Gold),
-                    )
-                    Text(
-                        text       = "$dueBottles пора открыть",
-                        fontFamily = FontFamily.Monospace,
-                        fontSize   = 12.5.sp,
-                        color      = Ink3,
-                    )
-                }
-                if (totalPositions > 0) {
-                    Text("·", fontSize = 12.5.sp, color = Ink3)
-                    Text(
-                        text       = "$totalPositions ${pluralPositions(totalPositions)}",
-                        fontFamily = FontFamily.Monospace,
-                        fontSize   = 12.5.sp,
-                        color      = Ink3,
-                    )
-                }
+private fun CellarTopBar(totalBottles: Int, syncing: Boolean, onSync: () -> Unit) {
+    MerloticTopBar(title = "Погреб") {
+        if (totalBottles > 0) {
+            Column(horizontalAlignment = Alignment.End) {
+                Text("Бутылки:", fontSize = 12.5.sp, lineHeight = 15.sp, color = Ink3)
+                Text("$totalBottles шт", fontSize = 12.5.sp, lineHeight = 15.sp, color = Ink2)
             }
         }
+        Spacer(Modifier.width(8.dp))
+        com.enolo.app.ui.components.SyncIconButton(syncing = syncing, onClick = onSync)
     }
 }
 
 @Composable
-private fun CellarAiSearchBar(onSearchClick: () -> Unit, onAiClick: () -> Unit) {
-    Surface(
-        modifier        = Modifier
-            .fillMaxWidth()
-            .padding(horizontal = 16.dp)
-            .padding(bottom = 8.dp),
-        shape           = RoundedCornerShape(16.dp),
-        color           = Color.White,
-        border          = BorderStroke(1.dp, Line),
-        shadowElevation = 1.dp,
-        onClick         = onSearchClick,
-    ) {
-        Row(
-            modifier              = Modifier.padding(9.dp),
-            verticalAlignment     = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(8.dp),
-        ) {
-            Icon(Icons.Default.Search, contentDescription = null, tint = Ink3, modifier = Modifier.size(20.dp))
-            Text(
-                text     = "Поиск или «что открыть к рыбе»",
-                fontSize = 14.sp,
-                color    = Ink3,
-                modifier = Modifier.weight(1f),
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis,
-            )
-            IconButton(
-                onClick  = onAiClick,
-                modifier = Modifier
-                    .size(42.dp)
-                    .clip(RoundedCornerShape(11.dp))
-                    .background(Teal),
-            ) {
-                Icon(Icons.Default.AutoAwesome, contentDescription = "AI", tint = Color.White, modifier = Modifier.size(20.dp))
-            }
-        }
-    }
-}
-
-@Composable
-private fun CellarSearchHeader(
-    value          : String,
-    onValueChange  : (String) -> Unit,
-    onBack         : () -> Unit,
-    focusRequester : FocusRequester,
+private fun CellarSearchBar(
+    value         : String,
+    onValueChange : (String) -> Unit,
+    onClear       : () -> Unit,
+    onAiClick     : () -> Unit,
 ) {
-    Row(
-        modifier          = Modifier.fillMaxWidth().padding(horizontal = 8.dp, vertical = 10.dp),
-        verticalAlignment = Alignment.CenterVertically,
+    MerloticSearchBar(
+        value         = value,
+        onValueChange = onValueChange,
+        onClear       = onClear,
+        placeholder   = "Поиск в погребе",
+        modifier      = Modifier.padding(top = 3.5.dp, bottom = 10.dp),
     ) {
-        IconButton(onClick = onBack) {
-            Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Назад", tint = Ink)
-        }
-        BasicTextField(
-            value         = value,
-            onValueChange = onValueChange,
-            modifier      = Modifier.weight(1f).focusRequester(focusRequester),
-            singleLine    = true,
-            textStyle     = TextStyle(fontSize = 16.sp, color = Ink),
-            cursorBrush   = SolidColor(Teal),
-            decorationBox = { inner ->
-                if (value.isEmpty()) Text("Поиск по погребу…", fontSize = 16.sp, color = Ink3)
-                inner()
-            },
-        )
-        if (value.isNotEmpty()) {
-            IconButton(onClick = { onValueChange("") }) {
-                Icon(Icons.Default.Close, contentDescription = "Очистить", tint = Ink3)
-            }
-        }
+        SearchBarActionButton(Icons.Default.AutoAwesome, "AI-поиск", onAiClick)
     }
 }
 
@@ -512,77 +448,97 @@ private fun CellarQuickFiltersRow(
 ) {
     val hasActive = filterCount > 0
     val sortIsDefault = currentSort == "due_first"
-    Row(
-        modifier          = Modifier.fillMaxWidth().padding(start = 16.dp, end = 16.dp, bottom = 12.dp),
-        verticalAlignment = Alignment.CenterVertically,
+    // Ничего не закреплено: сортировка, фильтры и пресеты — единая прокручиваемая лента.
+    LazyRow(
+        modifier              = Modifier.fillMaxWidth().padding(start = 16.dp, end = 16.dp, bottom = 12.dp),
+        verticalAlignment     = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(8.dp),
     ) {
         // Sort icon button
-        Box(
-            modifier = Modifier
-                .size(36.dp)
-                .clip(RoundedCornerShape(10.dp))
-                .background(if (!sortIsDefault) TealWash else Fill)
-                .clickable(onClick = onSortClick),
-            contentAlignment = Alignment.Center,
-        ) {
-            Icon(
-                imageVector        = Icons.Default.SwapVert,
-                contentDescription = "Сортировка",
-                tint               = if (!sortIsDefault) Teal else Ink2,
-                modifier           = Modifier.size(18.dp),
-            )
-        }
-
-        Surface(
-            onClick  = onFilterClick,
-            shape    = RoundedCornerShape(18.dp),
-            color    = if (hasActive) TealWash else Fill,
-            border   = if (hasActive) BorderStroke(1.dp, Teal) else null,
-            modifier = Modifier.height(36.dp),
-        ) {
-            Row(
-                modifier              = Modifier.padding(horizontal = 12.dp),
-                verticalAlignment     = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(4.dp),
+        item(key = "sort") {
+            Box(
+                modifier = Modifier
+                    .size(36.dp)
+                    .clip(RoundedCornerShape(10.dp))
+                    .background(if (!sortIsDefault) TealWash else Fill)
+                    .clickable(onClick = onSortClick),
+                contentAlignment = Alignment.Center,
             ) {
                 Icon(
-                    Icons.Default.Tune,
-                    contentDescription = null,
-                    modifier = Modifier.size(14.dp),
-                    tint     = if (hasActive) Teal else Ink,
-                )
-                Text(
-                    text       = if (hasActive) "Фильтры $filterCount" else "Фильтры",
-                    fontSize   = 13.sp,
-                    fontWeight = FontWeight.Medium,
-                    color      = if (hasActive) Teal else Ink,
+                    imageVector        = Icons.AutoMirrored.Filled.Sort,
+                    contentDescription = "Сортировка",
+                    tint               = if (!sortIsDefault) Teal else Ink2,
+                    modifier           = Modifier.size(18.dp),
                 )
             }
         }
-        LazyRow(
-            modifier              = Modifier.weight(1f),
-            horizontalArrangement = Arrangement.spacedBy(6.dp),
-        ) {
-            items(CELLAR_QUICK_PRESETS, key = { it.first }) { (key, label) ->
-                val active = key in activePresets
-                Surface(
-                    onClick  = { onPresetToggle(key) },
-                    shape    = RoundedCornerShape(18.dp),
-                    color    = if (active) Ink else Fill,
-                    modifier = Modifier.height(36.dp),
+
+        // "Фильтры" — активный сплошной зелёный
+        item(key = "filters") {
+            Surface(
+                onClick  = onFilterClick,
+                shape    = RoundedCornerShape(18.dp),
+                color    = if (hasActive) Teal else Fill,
+                modifier = Modifier.height(36.dp),
+            ) {
+                Row(
+                    modifier              = Modifier.padding(horizontal = 12.dp),
+                    verticalAlignment     = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(4.dp),
                 ) {
+                    Icon(
+                        Icons.Default.Tune,
+                        contentDescription = null,
+                        modifier = Modifier.size(14.dp),
+                        tint     = if (hasActive) Color.White else Ink2,
+                    )
                     Text(
-                        text       = label,
-                        modifier   = Modifier.padding(horizontal = 12.dp, vertical = 8.dp),
+                        text       = if (hasActive) "Фильтры ($filterCount)" else "Фильтры",
                         fontSize   = 13.sp,
                         fontWeight = FontWeight.Medium,
-                        color      = if (active) Color.White else Ink,
+                        color      = if (hasActive) Color.White else Ink2,
+                    )
+                }
+            }
+        }
+
+        items(CELLAR_QUICK_PRESETS, key = { it.first }) { (key, label) ->
+            val active = key in activePresets
+            val dot    = cellarPresetDotColor(key)
+            Surface(
+                onClick  = { onPresetToggle(key) },
+                shape    = RoundedCornerShape(18.dp),
+                color    = if (active) Color.White else Fill,
+                border   = if (active) BorderStroke(1.5.dp, dot ?: Teal) else null,
+                modifier = Modifier.height(36.dp),
+            ) {
+                Row(
+                    modifier              = Modifier.padding(horizontal = 12.dp),
+                    verticalAlignment     = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(6.dp),
+                ) {
+                    if (dot != null) {
+                        Box(Modifier.size(8.dp).clip(CircleShape).background(dot))
+                    }
+                    Text(
+                        text       = label,
+                        fontSize   = 13.sp,
+                        fontWeight = FontWeight.Medium,
+                        color      = Ink2,
                     )
                 }
             }
         }
     }
+}
+
+/** Цвет точки у пресет-чипа типа вина. */
+private fun cellarPresetDotColor(key: String): Color? = when (key) {
+    "RED"       -> Color(0xFF8B1A2A)
+    "WHITE"     -> Gold
+    "SPARKLING" -> GreenDot
+    "ROSE"      -> Color(0xFFC2185B)
+    else        -> null
 }
 
 // ─── Sort bottom sheet ────────────────────────────────────────────────────────
@@ -645,174 +601,181 @@ private fun CellarSortBottomSheet(
 // ─── Bottle row ──────────────────────────────────────────────────────────────
 
 @Composable
-private fun CellarBottleRow(
+internal fun CellarWineCard(
     item     : CellarItemDto,
     photoUrl : String?,
     onClick  : () -> Unit,
     onMenu   : () -> Unit,
+    showMenu : Boolean = true,
 ) {
-    val status = remember(item) { item.drinkWindowStatus() }
-    Column(modifier = Modifier.background(Color.White)) {
-        Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .clickable(onClick = onClick)
-                .padding(horizontal = 18.dp, vertical = 13.dp),
-            verticalAlignment = Alignment.Top,
-        ) {
-            // Thumbnail + qty badge
-            Box(modifier = Modifier.size(width = 54.dp, height = 70.dp)) {
+    val uriHandler = LocalUriHandler.current
+    Surface(
+        modifier        = Modifier
+            .fillMaxWidth()
+            .padding(horizontal = 16.dp)
+            .clickable(onClick = onClick),
+        shape           = RoundedCornerShape(18.dp),
+        color           = Color.White,
+        border          = BorderStroke(1.dp, Line),
+        shadowElevation = 1.dp,
+    ) {
+        Row(Modifier.height(IntrinsicSize.Min)) {
+            // ── Photo panel (left) — бутылка целиком, впритык по высоте карточки ──
+            Box(
+                modifier = Modifier.width(84.dp).fillMaxHeight().background(Color.White),
+                contentAlignment = Alignment.Center,
+            ) {
                 if (!photoUrl.isNullOrBlank()) {
                     AsyncImage(
-                        model            = photoUrl,
+                        model              = photoUrl,
                         contentDescription = null,
-                        modifier         = Modifier.fillMaxSize().clip(RoundedCornerShape(11.dp)),
-                        contentScale     = ContentScale.Fit,
+                        // Бутылка целиком по ВЫСОТЕ карточки (ничего не режем по вертикали),
+                        // по ширине — по центру (узкие фото с полями, широкие подрежутся по бокам).
+                        contentScale       = ContentScale.FillHeight,
+                        alignment          = Alignment.Center,
+                        modifier           = Modifier.fillMaxSize(),
                     )
                 } else {
-                    Box(
-                        modifier = Modifier
-                            .fillMaxSize()
-                            .clip(RoundedCornerShape(11.dp))
-                            .background(Fill)
-                            .drawBehind {
-                                val step = 12.dp.toPx(); val sw = 1.dp.toPx()
-                                val col  = Color(0xFFDEDEDA)
-                                var x = -size.height
-                                while (x < size.width + size.height) {
-                                    drawLine(col, Offset(x, 0f), Offset(x + size.height, size.height), sw)
-                                    x += step
-                                }
-                            },
-                        contentAlignment = Alignment.Center,
-                    ) {
-                        Icon(Icons.Default.WineBar, contentDescription = null, tint = Ink3, modifier = Modifier.size(24.dp))
+                    Box(Modifier.fillMaxSize().background(Fill), contentAlignment = Alignment.Center) {
+                        Icon(Icons.Default.WineBar, contentDescription = null, tint = Ink3, modifier = Modifier.size(34.dp))
                     }
-                }
-                // Quantity badge
-                Surface(
-                    modifier        = Modifier.align(Alignment.TopStart).padding(3.dp),
-                    color           = Teal,
-                    shape           = RoundedCornerShape(6.dp),
-                    shadowElevation = 1.dp,
-                ) {
-                    Text(
-                        text       = "×${item.quantity}",
-                        modifier   = Modifier.padding(horizontal = 5.dp, vertical = 1.dp),
-                        fontFamily = FontFamily.Monospace,
-                        fontSize   = 10.sp,
-                        fontWeight = FontWeight.SemiBold,
-                        color      = Color.White,
-                    )
                 }
             }
 
-            Spacer(Modifier.width(12.dp))
-
-            // Info column
-            Column(modifier = Modifier.weight(1f)) {
-                val displayName = "${item.producer} ${item.name}".trim()
-                Text(
-                    text       = displayName,
-                    fontSize   = 14.sp,
-                    fontWeight = FontWeight.SemiBold,
-                    maxLines   = 1,
-                    overflow   = TextOverflow.Ellipsis,
-                    color      = Ink,
-                )
-                val sub = listOfNotNull(
-                    Formatters.wineTypeRu(item.wineType).takeIf { it.isNotBlank() },
-                    item.region ?: item.country,
-                ).joinToString(" · ")
-                if (sub.isNotBlank()) {
+            // ── Content (right) ──────────────────────────────────────────────
+            Column(
+                modifier            = Modifier.weight(1f).padding(14.dp),
+                verticalArrangement = Arrangement.spacedBy(5.dp),
+            ) {
+                // Country flag + name + kebab
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    iso2ToFlagEmoji(item.countryIso2)?.let { flag ->
+                        Text(flag, fontSize = 15.sp)
+                        Spacer(Modifier.width(6.dp))
+                    }
                     Text(
-                        text     = sub,
-                        fontSize = 12.sp,
+                        text     = item.country ?: "",
+                        fontSize = 12.5.sp,
                         color    = Ink3,
                         maxLines = 1,
                         overflow = TextOverflow.Ellipsis,
-                        modifier = Modifier.padding(top = 2.dp),
+                        modifier = Modifier.weight(1f),
                     )
+                    if (showMenu) {
+                        Icon(
+                            Icons.Default.MoreVert, contentDescription = "Действия", tint = Ink3,
+                            modifier = Modifier.size(18.dp).clickable(onClick = onMenu),
+                        )
+                    }
                 }
 
-                // Critic scores
-                val scoreText = item.criticScores
-                    ?.entries
-                    ?.sortedByDescending { it.value }
-                    ?.take(3)
-                    ?.joinToString(" · ") { "${abbreviateCritic(it.key)} ${it.value}" }
-                if (!scoreText.isNullOrBlank()) {
-                    Text(
-                        text       = scoreText,
-                        fontSize   = 11.sp,
-                        fontFamily = FontFamily.Monospace,
-                        color      = Teal,
-                        modifier   = Modifier.padding(top = 3.dp),
-                    )
+                Text(
+                    // Год урожая — в конце наименования через булит (NV не дописываем)
+                    text       = item.vintageYear?.let { "${item.name} • $it" } ?: item.name,
+                    fontSize   = 16.5.sp,
+                    fontWeight = FontWeight.SemiBold,
+                    color      = Ink,
+                    lineHeight = 20.sp,
+                    maxLines   = 1,
+                    overflow   = TextOverflow.Ellipsis,
+                )
+                if (item.producer.isNotBlank()) {
+                    Text(item.producer, fontSize = 13.5.sp, color = Ink2, maxLines = 1, overflow = TextOverflow.Ellipsis)
                 }
 
-                // Meta pills row
+                // На месте бывшего года — география: регион · апелласьон
+                val meta = listOfNotNull(
+                    item.region?.takeIf { it.isNotBlank() },
+                    item.appellation?.takeIf { it.isNotBlank() },
+                ).joinToString(" · ")
+                if (meta.isNotBlank()) {
+                    Text(meta, fontSize = 12.5.sp, color = Ink3, lineHeight = 16.sp)
+                }
+
+                item.grapes?.takeIf { it.isNotEmpty() }?.let { grapes ->
+                    Row(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalAlignment = Alignment.Top) {
+                        GrapeIcon(tint = Ink3, modifier = Modifier.size(14.dp).padding(top = 2.dp))
+                        Text(grapes.joinToString(", "), fontSize = 12.5.sp, color = Ink3, lineHeight = 16.sp)
+                    }
+                }
+
+                Spacer(Modifier.height(2.dp))
+
+                // Stat blocks: Тип / Оценка / Погреб
                 Row(
-                    modifier              = Modifier.padding(top = 6.dp),
-                    horizontalArrangement = Arrangement.spacedBy(6.dp),
+                    modifier              = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
                     verticalAlignment     = Alignment.CenterVertically,
                 ) {
-                    // Added date plain text
-                    if (item.createdAt.isNotBlank()) {
-                        Text(
-                            text       = "Добавлено ${formatAddedDate(item.createdAt)}",
-                            fontFamily = FontFamily.Monospace,
-                            fontSize   = 10.5.sp,
-                            color      = Ink3,
+                    StatBlock(
+                        circleColor = Color(0xFFFBECEF),
+                        icon        = { Icon(Icons.Default.WineBar, null, tint = Red, modifier = Modifier.size(16.dp)) },
+                        label       = "Тип",
+                        value       = Formatters.wineTypeRu(item.wineType).ifBlank { "—" },
+                    )
+                    if (item.vivinoUrl != null || item.vivinoRating != null) {
+                        StatBlock(
+                            circleColor = TealWash,
+                            icon        = { Icon(Icons.Default.StarBorder, null, tint = Teal, modifier = Modifier.size(16.dp)) },
+                            label       = "Vivino",
+                            value       = item.vivinoRating?.let { String.format(java.util.Locale.US, "%.1f", it) } ?: "—",
+                            modifier    = item.vivinoUrl?.let { url ->
+                                Modifier.clickable { runCatching { uriHandler.openUri(url) } }
+                            } ?: Modifier,
                         )
                     }
-                    // Drink window pill
-                    if (item.drinkWindowFrom != null && item.drinkWindowTo != null) {
-                        DrinkWindowPill(
-                            from   = item.drinkWindowFrom,
-                            to     = item.drinkWindowTo,
-                            status = status,
-                        )
-                    }
+                    StatBlock(
+                        circleColor = TealWash,
+                        icon        = { Icon(Icons.Default.Liquor, null, tint = Teal, modifier = Modifier.size(16.dp)) },
+                        label       = "Погреб",
+                        value       = "× ${item.quantity}",
+                    )
                 }
             }
-
-            // Kebab menu
-            IconButton(onClick = onMenu, modifier = Modifier.size(36.dp)) {
-                Icon(Icons.Default.MoreVert, contentDescription = "Действия", tint = Ink3, modifier = Modifier.size(18.dp))
-            }
         }
-        HorizontalDivider(color = Line, modifier = Modifier.padding(start = 84.dp))
     }
 }
 
 @Composable
-private fun DrinkWindowPill(from: Int, to: Int, status: DrinkWindowStatus?) {
-    val bgColor     : Color
-    val textColor   : Color
-    val dotColor    : Color
-    val statusLabel : String
-    when (status) {
-        DrinkWindowStatus.DUE   -> { bgColor = GoldBg;  textColor = GoldText; dotColor = Gold;  statusLabel = "Пора открыть" }
-        DrinkWindowStatus.READY -> { bgColor = TealWash; textColor = Teal;    dotColor = Teal;  statusLabel = "В самый раз" }
-        DrinkWindowStatus.HOLD  -> { bgColor = Fill;     textColor = Ink2;    dotColor = Ink3;  statusLabel = "Хранить" }
-        null                    -> { bgColor = Fill;     textColor = Ink2;    dotColor = Ink3;  statusLabel = "" }
-    }
-    Surface(shape = RoundedCornerShape(6.dp), color = bgColor) {
-        Row(
-            modifier          = Modifier.padding(horizontal = 7.dp, vertical = 3.dp),
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(4.dp),
-        ) {
-            Box(Modifier.size(5.dp).clip(CircleShape).background(dotColor))
-            Text(
-                text       = "$from–$to${if (statusLabel.isNotBlank()) " · $statusLabel" else ""}",
-                fontFamily = FontFamily.Monospace,
-                fontSize   = 10.5.sp,
-                color      = textColor,
-            )
+private fun StatBlock(
+    circleColor : Color,
+    icon        : @Composable () -> Unit,
+    label       : String,
+    value       : String,
+    modifier    : Modifier = Modifier,
+) {
+    Row(modifier = modifier, verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(7.dp)) {
+        Box(Modifier.size(34.dp).clip(CircleShape).background(circleColor), contentAlignment = Alignment.Center) { icon() }
+        Column {
+            Text(label, fontSize = 10.5.sp, color = Ink3, maxLines = 1)
+            Text(value, fontSize = 13.sp, fontWeight = FontWeight.SemiBold, color = Ink, maxLines = 1)
         }
     }
+}
+
+/** Маленькая иконка-гроздь винограда (кружки «горкой» + сужение книзу). */
+@Composable
+private fun GrapeIcon(tint: Color, modifier: Modifier = Modifier) {
+    Canvas(modifier = modifier) {
+        val w = size.width; val h = size.height; val r = w * 0.16f
+        val pts = listOf(
+            0.5f to 0.30f,
+            0.33f to 0.45f, 0.67f to 0.45f,
+            0.5f to 0.52f,
+            0.41f to 0.66f, 0.59f to 0.66f,
+            0.5f to 0.82f,
+        )
+        pts.forEach { (x, y) -> drawCircle(tint, r, Offset(x * w, y * h)) }
+    }
+}
+
+/** ISO2 → эмодзи-флаг (региональные индикаторы). */
+private fun iso2ToFlagEmoji(iso2: String?): String? {
+    val cc = iso2?.uppercase() ?: return null
+    if (cc.length != 2 || !cc.all { it in 'A'..'Z' }) return null
+    val a = 0x1F1E6 + (cc[0] - 'A')
+    val b = 0x1F1E6 + (cc[1] - 'A')
+    return String(Character.toChars(a)) + String(Character.toChars(b))
 }
 
 // ─── Empty state ─────────────────────────────────────────────────────────────
@@ -853,6 +816,8 @@ private fun CellarEmptyState(hasFilters: Boolean, onAddClick: () -> Unit) {
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 private fun CellarAddSheet(
+    onScan    : () -> Unit,
+    onGallery : () -> Unit,
     onManual  : () -> Unit,
     onDismiss : () -> Unit,
 ) {
@@ -880,16 +845,14 @@ private fun CellarAddSheet(
                 icon     = Icons.Default.CameraAlt,
                 title    = "Сканировать этикетку",
                 subtitle = "Камера распознаёт вино автоматически",
-                onClick  = { /* stub */ },
+                onClick  = onScan,
             )
-            HorizontalDivider(color = Line, modifier = Modifier.padding(start = 72.dp))
             AddSheetAction(
-                icon     = Icons.Default.Search,
-                title    = "Найти по названию",
-                subtitle = "Поиск по базе и магазинам",
-                onClick  = { /* stub */ },
+                icon     = Icons.Default.PhotoLibrary,
+                title    = "Выбрать фото из галереи",
+                subtitle = "Распознать вино по фото этикетки",
+                onClick  = onGallery,
             )
-            HorizontalDivider(color = Line, modifier = Modifier.padding(start = 72.dp))
             AddSheetAction(
                 icon     = Icons.Default.Edit,
                 title    = "Ввести вручную",
@@ -940,6 +903,7 @@ private fun CellarActionSheet(
     onWineSearcher      : (String) -> Unit,
     onLinkVivino        : () -> Unit,
     onLinkWineSearcher  : () -> Unit,
+    onExternalResearch  : () -> Unit,
     onDismiss           : () -> Unit,
 ) {
     ModalBottomSheet(
@@ -959,7 +923,7 @@ private fun CellarActionSheet(
                 // Mini thumbnail
                 Box(Modifier.size(width = 38.dp, height = 48.dp)) {
                     if (!photoUrl.isNullOrBlank()) {
-                        AsyncImage(model = photoUrl, contentDescription = null, modifier = Modifier.fillMaxSize().clip(RoundedCornerShape(8.dp)), contentScale = ContentScale.Fit)
+                        AsyncImage(model = photoUrl, contentDescription = null, modifier = Modifier.fillMaxSize().clip(RoundedCornerShape(8.dp)).background(Color.White), contentScale = ContentScale.Fit)
                     } else {
                         Box(Modifier.fillMaxSize().clip(RoundedCornerShape(8.dp)).background(Fill))
                     }
@@ -993,6 +957,7 @@ private fun CellarActionSheet(
             ActionRow(Icons.Default.Link, Fill, Ink2, "Привязать к Vivino", "Найти и выбрать вино на Vivino", onClick = { onLinkVivino(); onDismiss() })
             HorizontalDivider(color = Line, modifier = Modifier.padding(start = 72.dp))
             ActionRow(Icons.Default.TravelExplore, Fill, Ink2, "Привязать к Wine-Searcher", "Найти вино и обновить оценки критиков", onClick = { onLinkWineSearcher(); onDismiss() })
+            ActionRow(Icons.Default.ContentCopy, Fill, Ink2, "Внешнее исследование", "Скопировать готовый запрос для любой LLM", onClick = { onExternalResearch(); onDismiss() })
             ActionRow(Icons.Default.RateReview,   TealWash, Teal,  "Написать отзыв",      "Оценка и заметка",                   onClick = { onNote();    onDismiss() })
             ActionRow(Icons.Default.Edit,         TealWash, Teal,  "Редактировать",       "Количество, год, окно употребления",  onClick = { onEdit();    onDismiss() })
             ActionRow(
@@ -1046,7 +1011,7 @@ private fun ActionRow(
 
 // ─── Filters sheet ────────────────────────────────────────────────────────────
 
-@OptIn(ExperimentalMaterial3Api::class, ExperimentalLayoutApi::class)
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 private fun CellarFiltersSheet(
     currentWineType     : String,
@@ -1086,7 +1051,7 @@ private fun CellarFiltersSheet(
                 Modifier.fillMaxWidth().padding(horizontal = 20.dp, vertical = 14.dp),
                 verticalAlignment = Alignment.CenterVertically,
             ) {
-                Text("Фильтры", fontSize = 19.sp, fontWeight = FontWeight.SemiBold, color = Ink, modifier = Modifier.weight(1f))
+                Text("Фильтры", fontSize = 24.sp, fontWeight = FontWeight.SemiBold, color = Ink, modifier = Modifier.weight(1f))
                 Box(
                     Modifier.size(34.dp).clip(CircleShape).background(Fill).clickable(onClick = onDismiss),
                     contentAlignment = Alignment.Center,
@@ -1103,23 +1068,23 @@ private fun CellarFiltersSheet(
                 verticalArrangement = Arrangement.spacedBy(20.dp),
             ) {
                 // Тип вина
-                CellarFilterGroup(
-                    label    = "ТИП ВИНА",
+                FilterChipGroup(
+                    label    = "Тип вина",
                     options  = listOf("RED" to "Красное", "WHITE" to "Белое", "ROSE" to "Розе", "SPARKLING" to "Игристое", "FORTIFIED" to "Креплёное"),
                     selected = if (wineType.isBlank()) emptySet() else setOf(wineType),
                     onToggle = { wineType = if (wineType == it) "" else it },
                 )
                 // Статус хранения
-                CellarFilterGroup(
-                    label    = "СТАТУС ХРАНЕНИЯ",
+                FilterChipGroup(
+                    label    = "Статус хранения",
                     options  = listOf("DUE" to "Пора открыть", "READY" to "В самый раз", "HOLD" to "Хранить"),
                     selected = if (statusPreset.isBlank()) emptySet() else setOf(statusPreset),
                     onToggle = { statusPreset = if (statusPreset == it) "" else it },
                 )
                 // Страна
                 if (availableCountries.isNotEmpty()) {
-                    CellarFilterGroup(
-                        label    = "СТРАНА",
+                    FilterChipGroup(
+                        label    = "Страна",
                         options  = availableCountries.map { it to it },
                         selected = if (country.isBlank()) emptySet() else setOf(country),
                         onToggle = { country = if (country == it) "" else it },
@@ -1127,8 +1092,8 @@ private fun CellarFiltersSheet(
                 }
                 // Сорта винограда
                 if (availableGrapes.isNotEmpty()) {
-                    CellarFilterGroup(
-                        label    = "СОРТА ВИНОГРАДА",
+                    FilterChipGroup(
+                        label    = "Сорта винограда",
                         options  = availableGrapes.map { it to it },
                         selected = selectedGrapes,
                         onToggle = { grape ->
@@ -1161,79 +1126,7 @@ private fun CellarFiltersSheet(
     }
 }
 
-@Composable
-private fun CellarFilterGroup(
-    label    : String,
-    options  : List<Pair<String, String>>,
-    selected : Set<String>,
-    onToggle : (String) -> Unit,
-) {
-    Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
-        Text(label, fontFamily = FontFamily.Monospace, fontSize = 11.sp, fontWeight = FontWeight.Medium, letterSpacing = 0.06.em, color = Ink3)
-        FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-            options.forEach { (key, optLabel) ->
-                val isSelected = key in selected
-                Surface(
-                    onClick  = { onToggle(key) },
-                    shape    = RoundedCornerShape(20.dp),
-                    color    = if (isSelected) TealWash else Fill,
-                    border   = BorderStroke(1.dp, if (isSelected) Color(0xFFD8EAE0) else Color.Transparent),
-                    modifier = Modifier.height(36.dp),
-                ) {
-                    Text(
-                        optLabel,
-                        modifier   = Modifier.padding(horizontal = 14.dp, vertical = 8.dp),
-                        fontSize   = 13.5.sp,
-                        fontWeight = if (isSelected) FontWeight.Medium else FontWeight.Normal,
-                        color      = if (isSelected) Teal else Ink,
-                    )
-                }
-            }
-        }
-    }
-}
-
 // ─── Helpers ─────────────────────────────────────────────────────────────────
-
-private fun pluralBottles(n: Int): String {
-    val mod10 = n % 10; val mod100 = n % 100
-    return when {
-        mod100 in 11..19 -> "бутылок"
-        mod10 == 1       -> "бутылка"
-        mod10 in 2..4    -> "бутылки"
-        else             -> "бутылок"
-    }
-}
-
-private fun pluralPositions(n: Int): String {
-    val mod10 = n % 10; val mod100 = n % 100
-    return when {
-        mod100 in 11..19 -> "позиций"
-        mod10 == 1       -> "позиция"
-        mod10 in 2..4    -> "позиции"
-        else             -> "позиций"
-    }
-}
-
-private fun abbreviateCritic(name: String): String = when {
-    name.contains("Advocate",  ignoreCase = true) -> "WA"
-    name.contains("Spectator", ignoreCase = true) -> "WS"
-    name.contains("Suckling",  ignoreCase = true) -> "JS"
-    name.contains("Vinous",    ignoreCase = true) -> "Vinous"
-    name.contains("Robinson",  ignoreCase = true) -> "JR"
-    name.contains("Decanter",  ignoreCase = true) -> "DC"
-    name.contains("Burghound", ignoreCase = true) -> "BH"
-    name.contains("Falstaff",  ignoreCase = true) -> "FS"
-    else -> name.take(4)
-}
-
-private fun formatAddedDate(createdAt: String): String = try {
-    val date = if (createdAt.length >= 10) createdAt.substring(0, 10) else ""
-    if (date.length == 10) {
-        val p = date.split("-")
-        "${p[2]}.${p[1]}.${p[0].substring(2)}"
-    } else createdAt
-} catch (_: Exception) { createdAt }
 
 private fun createCellarTempUri(context: Context): Uri {
     val file = File(context.cacheDir, "cellar_photo_${System.currentTimeMillis()}.jpg")

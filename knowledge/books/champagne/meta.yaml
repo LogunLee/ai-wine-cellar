@@ -1,0 +1,11 @@
+book_id: champagne
+title: "Шампань и другие игристые вина"
+series: "Simple Wine News. Просто о лучших винах"
+publisher: "Эксмо"
+year: 2017
+language: ["rus", "fra"]
+source_pdf: "C:\\Users\\LoGun\\YandexDisk\\МОИ ДОКУМЕНТЫ\\РАЗНОЕ\\ЛИТЕРАТУРА\\ВИНО\\Шампань и другие игристые вина (Simple Wine News) - 2017.pdf"
+intermediates: "C:\\Users\\LoGun\\AppData\\Local\\Temp\\pdf_ocr_champagne"
+method: "structured-facts (ocr: facts) — пересказ своими словами; кураторские списки дайджестом; авторская проза НЕ воспроизводится дословно (решение пользователя 2026-06-24)"
+ocr_anchor: "Tesseract -l rus+fra, PSM 1"
+notes: "Систематическая OCR-ошибка 3→5 — все числа/даты сверять с PNG; ёмкости в гл."

@@ -1,12 +1,17 @@
-import { Controller, Get, Query, UseGuards } from '@nestjs/common'
+import { Controller, Get, Query, Req, UseGuards } from '@nestjs/common'
 import { AuthGuard } from '@nestjs/passport'
+import type { Request } from 'express'
 import { DiscountsService } from './discounts.service'
 import type { DiscountFilters } from './discounts.service'
+import { ImageProxyService } from './image-proxy.service'
 
 @Controller('discounts')
 @UseGuards(AuthGuard('jwt'))
 export class DiscountsController {
-  constructor(private readonly discountsService: DiscountsService) {}
+  constructor(
+    private readonly discountsService: DiscountsService,
+    private readonly imageProxy: ImageProxyService,
+  ) {}
 
   @Get('last-updated')
   @UseGuards(AuthGuard('jwt'))
@@ -21,7 +26,7 @@ export class DiscountsController {
   }
 
   @Get('offers')
-  async getOffers(@Query() query: Record<string, string>) {
+  async getOffers(@Query() query: Record<string, string>, @Req() req: Request) {
     const filters: DiscountFilters = {
       page: query.page ? parseInt(query.page, 10) : undefined,
       limit: query.limit ? parseInt(query.limit, 10) : undefined,
@@ -42,6 +47,14 @@ export class DiscountsController {
       grapes: query.grapes ? query.grapes.split(',').filter(Boolean) : undefined,
       monosort: query.monosort === 'true',
     }
-    return this.discountsService.getOffers(filters)
+    const result = await this.discountsService.getOffers(filters)
+
+    // Картинки магазинов прогоняем через наш нормализатор (белый фон вместо прозрачного/чёрного)
+    const base = `${req.protocol}://${req.get('host')}`
+    result.items = result.items.map((item) => ({
+      ...item,
+      imageUrl: this.imageProxy.proxify(base, item.imageUrl),
+    }))
+    return result
   }
 }

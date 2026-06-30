@@ -7,13 +7,15 @@ import { WineLabScraper } from './winelab.scraper'
 import { AmwineScraper } from './amwine.scraper'
 import { FortwineScraper } from './fortwine.scraper'
 import { MetroScraper } from './metro.scraper'
+import { LentaScraper } from './lenta.scraper'
+import { GlobusScraper } from './globus.scraper'
 import { NormalizerModule } from '../normalizer/normalizer.module'
 import { SchedulerModule } from '../scheduler/scheduler.module'
 import { SchedulerService } from '../scheduler/scheduler.service'
 
 @Module({
   imports: [NormalizerModule, forwardRef(() => SchedulerModule)],
-  providers: [ScraperService, TestScraper, CoolCleverScraper, SimpleWineScraper, WineLabScraper, AmwineScraper, FortwineScraper, MetroScraper],
+  providers: [ScraperService, TestScraper, CoolCleverScraper, SimpleWineScraper, WineLabScraper, AmwineScraper, FortwineScraper, MetroScraper, LentaScraper, GlobusScraper],
   exports: [ScraperService],
 })
 export class ScraperModule implements OnModuleInit {
@@ -27,6 +29,8 @@ export class ScraperModule implements OnModuleInit {
     private readonly amwineScraper: AmwineScraper,
     private readonly fortwineScraper: FortwineScraper,
     private readonly metroScraper: MetroScraper,
+    private readonly lentaScraper: LentaScraper,
+    private readonly globusScraper: GlobusScraper,
   ) {}
 
   async onModuleInit() {
@@ -38,6 +42,9 @@ export class ScraperModule implements OnModuleInit {
     this.scraperService.registerScraper(this.amwineScraper)
     this.scraperService.registerScraper(this.fortwineScraper)
     this.scraperService.registerScraper(this.metroScraper)
+    this.scraperService.registerScraper(this.lentaScraper)
+    this.scraperService.registerScraper(this.globusScraper)
     await this.scraperService.resumeAllStalled()
+    this.scraperService.startStallWatchdog()
   }
 }

@@ -1,0 +1,36 @@
+2026-06-29 00:15 — page_0275..0280 done (Chile: geo/climate, regions/soils, Coquimbo, Aconcagua, Casablanca/San Antonio, Maipo). Batch B diapason 0275-0474.
+2026-06-29 00:16 — page_0281..0285 done (Chile: Rapel, Curicó, Maule, Southern region, viticulture).
+2026-06-29 00:17 — page_0286..0290 done (Chile: varieties, winemaking, industry, styles; China start + ancient China).
+2026-06-29 00:21 — page_0291..0295 done (China: modern history, geo/climate, wineries, varieties, viticulture; Chinon..claret short entries). 21/200 docs.
+2026-06-29 00:25 — page_0296..0300 done (claret hist..classification Bordeaux/Burgundy/elsewhere; clay..climate and wine quality). 26/200.
+2026-06-29 00:27 — page_0301..0310 done (climate and wine quality: temp var/sunlight/rain/humidity/wind/summary; climate change hist/future/pests; climate classification start). 36/200.
+2026-06-29 00:32 — page_0311..0315 done (climate classification CA/AUS; vine diseases; clonal selection; clos/Clos de Vougeot; closures hist/modern/synthetic; Cloudy Bay..Colorino..colour start). 41/200.
+2026-06-29 00:38 — page_0316..0320 done (colour red/white/rose; Columella..containers..cooperage). 46/200.
+2026-06-29 00:40 — page_0321..0331 done (cooperage hist/today/US/FR/HU/IT/ES/PT/AU; co-operatives FR/DE). 57/200.
+2026-06-29 00:42 — page_0332..0336 done (co-operatives IT/ES-PT/world; Copertino..corks, cork tree). 62/200.
+2026-06-29 00:44 — page_0337..0341 done (cork processing/range/clues; corkscrews hist/simple). 67/200.
+2026-06-29 00:45 — page_0342..0346 done (corkscrews mech/national; cork taint; corky bark; Cornalin; Cornas; Cornell; Cornifesto; Corse; Corsica hist/geo/viticulture). 72/200.
+2026-06-29 00:52 — page_0347..0363 done (Corsica subzones; doc_0358 big multi-entry Muscat Cap Corse..Crémant; Crémant d'Alsace/Bordeaux/Bourgogne/Die/Jura). NOTE: doc_0358 was 39K one-doc — page maps 1:1 to doc. 89/200.
+2026-06-29 00:54 — page_0364..0368 done (Crémant Limoux/Loire/Lux/Savoie; Crépy..Croatia hist). 94/200.
+2026-06-29 00:58 — page_0369..0373 done (Croatia geo big multi-doc Croatina..Cyprus; Cyprus hist/modern/climate/varieties). 99/200.
+2026-06-29 01:01 — page_0374..0378 done (Cyprus industry; cytokinins, Czech Rep; D: DAC, Dão, Davis, deacidification, dealcoholized, decanters hist/modern, decanting). 104/200.
+2026-06-29 01:08 — page_0379..0383 done (giant doc decanting..DOC; DOC PT/IT; DOCG; DRC history; Douro; downy mildew; drainage; dried-grape wines start/ancient). 109/200.
+2026-06-29 01:10 — page_0384..0388 done (dried-grape wines IT/elsewhere/modern; drinking; drinking vessels). 114/200.
+2026-06-29 01:14 — page_0389..0393 done (drinking vessels glass/silver/other; drip..Dutch wine trade big doc; Dutch wine trade Hanseatic/expansion). 119/200.
+2026-06-29 01:17 — page_0394..0398 done (Dutch trade influence; duty; E: Early Burgundy..Egypt big doc; Egypt ancient/trade/drinking). 124/200.
+2026-06-29 01:21 — page_0399..0403 done (Egypt religion; Egypt modern..England big doc; England history/modern; English lit; enrichment geo). 129/200.
+2026-06-29 01:26 — page_0404..0408 done (enrichment materials/technique big doc; enzymes..Eucharist; Eucharist controversy; eutypa; evaporation viticulture/maturation; extract..Ezerjó). 134/200.
+2026-06-29 01:29 — page_0409..0413 done (F: Faberrebe..faults big doc; faults visible/smellable/tastable; Favorita..fermentation; fermentation history). 139/200.
+2026-06-29  page_0416–0419 готовы (fermentation→food and wine matching). Продолжаю 0420.
+2026-06-29  page_0420–0424 готовы (food matching → France история). Продолжаю 0425.
+2026-06-29  page_0425–0430 готовы (France разделы → конец буквы F, FYROM). Продолжаю 0431 (буква G).
+2026-06-29  page_0431–0432 готовы (начало буквы G: Gaglioppo → geology Минералы). Продолжаю 0433.
+2026-06-29  page_0433–0436 готовы (geology разделы → Geoponika, начало Georgia). Продолжаю 0437.
+2026-06-29  page_0437–0446 готовы (Georgia все разделы → geosmin, geranium, German crosses, начало German history). Продолжаю 0447.
+2026-06-29  page_0447–0450 готовы (German history: истоки → винная торговля в Средние века). Продолжаю 0451.
+2026-06-29  page_0451–0454 готовы (German history: кризис 1500-1650 → сорта XVIII в.). Продолжаю 0455.
+2026-06-29  page_0455–0458 готовы (German history XX век → конец; German Wine Law; начало Germany). Продолжаю 0459.
+2026-06-29  page_0459–0461 готовы (Germany: История, География/климат, Виноградарство). Продолжаю 0462.
+2026-06-29  page_0462–0465 готовы (Germany виноделие/сорта/маркировка → конец; Gevrey, Gewürztraminer, glass, globalization, Graciano, grafting). Продолжаю 0466.
+2026-06-29  page_0466–0470 готовы (grafting → grape части → grapevine yellows, Graves, начало Greece). Продолжаю 0471.
+2026-06-29  page_0471–0474 готовы (Ancient Greece: заголовок, Истоки, Микены, Ранняя греческая литература). СТОП на page_0474 — диапазон doc_0275..doc_0474 завершён.

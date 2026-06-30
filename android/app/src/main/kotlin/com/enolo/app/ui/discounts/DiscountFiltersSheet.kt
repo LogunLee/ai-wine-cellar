@@ -21,26 +21,24 @@ import androidx.compose.ui.input.nestedscroll.NestedScrollConnection
 import androidx.compose.ui.input.nestedscroll.NestedScrollSource
 import androidx.compose.ui.input.nestedscroll.nestedScroll
 import androidx.compose.ui.platform.LocalConfiguration
-import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.unit.em
 import androidx.compose.ui.unit.sp
 import com.enolo.app.data.dto.StoreDto
 import com.enolo.app.data.repository.DiscountFilters
+import com.enolo.app.ui.components.FilterChipGroup
+import com.enolo.app.ui.components.FilterPillChip
+import com.enolo.app.ui.components.FilterSectionLabel
 import com.enolo.app.ui.components.MerloticSheet
 import com.enolo.app.ui.components.SheetDragHandle
 import com.enolo.app.ui.theme.TokenFill as Fill
 import com.enolo.app.ui.theme.TokenInk as Ink
-import com.enolo.app.ui.theme.TokenInk3 as Ink3
 import com.enolo.app.ui.theme.TokenLine as Line
-import com.enolo.app.ui.theme.TokenMintBorder as MintBorder
 import com.enolo.app.ui.theme.TokenTeal as Teal
-import com.enolo.app.ui.theme.TokenTealWash as TealWash
 
 // ─── Sheet ───────────────────────────────────────────────────────────────────
 
-@OptIn(ExperimentalMaterial3Api::class)
+@OptIn(ExperimentalMaterial3Api::class, ExperimentalLayoutApi::class)
 @Composable
 fun DiscountFiltersSheet(
     current            : DiscountFilters,
@@ -58,6 +56,7 @@ fun DiscountFiltersSheet(
     var seller        by remember { mutableStateOf(current.seller) }
     var country       by remember { mutableStateOf(current.country) }
     var selectedGrapes by remember { mutableStateOf(current.grapes.toSet()) }
+    var monosort      by remember { mutableStateOf(current.monosort) }
 
     val sheetState  = rememberModalBottomSheetState(skipPartiallyExpanded = true)
     val screenH     = LocalConfiguration.current.screenHeightDp.dp
@@ -93,7 +92,7 @@ fun DiscountFiltersSheet(
             ) {
                 Text(
                     "Фильтры",
-                    fontSize   = 19.sp,
+                    fontSize   = 24.sp,
                     fontWeight = FontWeight.SemiBold,
                     color      = Ink,
                     modifier   = Modifier.weight(1f),
@@ -121,8 +120,8 @@ fun DiscountFiltersSheet(
                 verticalArrangement = Arrangement.spacedBy(20.dp),
             ) {
                 // Тип вина
-                FilterGroup(
-                    label    = "ТИП ВИНА",
+                FilterChipGroup(
+                    label    = "Тип вина",
                     options  = listOf(
                         "RED"       to "Красное",
                         "WHITE"     to "Белое",
@@ -135,8 +134,8 @@ fun DiscountFiltersSheet(
                 )
 
                 // Цена
-                FilterGroup(
-                    label    = "ЦЕНА",
+                FilterChipGroup(
+                    label    = "Цена",
                     options  = listOf(
                         "U1000" to "до 1000 ₽",
                         "1K2K"  to "1000–2000 ₽",
@@ -148,8 +147,8 @@ fun DiscountFiltersSheet(
                 )
 
                 // Размер скидки
-                FilterGroup(
-                    label    = "РАЗМЕР СКИДКИ",
+                FilterChipGroup(
+                    label    = "Размер скидки",
                     options  = listOf("20" to "20%+", "30" to "30%+", "40" to "40%+", "50" to "50%+"),
                     selected = if (discPreset.isEmpty()) emptySet() else setOf(discPreset),
                     onToggle = { discPreset = if (discPreset == it) "" else it },
@@ -157,33 +156,56 @@ fun DiscountFiltersSheet(
 
                 // Страна (single-select)
                 if (availableCountries.isNotEmpty()) {
-                    FilterGroup(
-                        label    = "СТРАНА",
+                    FilterChipGroup(
+                        label    = "Страна",
                         options  = availableCountries.map { it to it },
                         selected = if (country.isBlank()) emptySet() else setOf(country),
                         onToggle = { country = if (country == it) "" else it },
                     )
                 }
 
-                // Сорта винограда (multi-select)
+                // Сорта винограда + тумблер «только моносортовые» (взаимосвязаны)
                 if (availableGrapes.isNotEmpty()) {
-                    FilterGroup(
-                        label     = "СОРТА ВИНОГРАДА",
-                        options   = availableGrapes.map { it to it },
-                        selected  = selectedGrapes,
-                        onToggle  = { grape ->
-                            selectedGrapes = if (grape in selectedGrapes)
-                                selectedGrapes - grape
-                            else
-                                selectedGrapes + grape
-                        },
-                    )
+                    Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                        FilterSectionLabel("Сорта винограда")
+                        Row(
+                            Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment     = Alignment.CenterVertically,
+                        ) {
+                            Text("Только моносортовые", fontSize = 14.sp, color = Ink)
+                            Switch(
+                                checked         = monosort,
+                                onCheckedChange = { monosort = it },
+                                colors = SwitchDefaults.colors(
+                                    checkedThumbColor    = Color.White,
+                                    checkedTrackColor    = Teal,
+                                    uncheckedThumbColor  = Color.White,
+                                    uncheckedTrackColor  = Fill,
+                                    uncheckedBorderColor = Line,
+                                ),
+                            )
+                        }
+                        FlowRow(
+                            horizontalArrangement = Arrangement.spacedBy(10.dp),
+                            verticalArrangement   = Arrangement.spacedBy(10.dp),
+                        ) {
+                            availableGrapes.forEach { grape ->
+                                FilterPillChip(label = grape, selected = grape in selectedGrapes) {
+                                    selectedGrapes = if (grape in selectedGrapes)
+                                        selectedGrapes - grape
+                                    else
+                                        selectedGrapes + grape
+                                }
+                            }
+                        }
+                    }
                 }
 
-                // Магазин
+                // Продавец
                 if (stores.isNotEmpty()) {
-                    FilterGroup(
-                        label    = "МАГАЗИН",
+                    FilterChipGroup(
+                        label    = "Продавец",
                         options  = stores.map { it.code to it.name },
                         selected = if (seller.isBlank()) emptySet() else setOf(seller),
                         onToggle = { seller = if (seller == it) "" else it },
@@ -208,6 +230,7 @@ fun DiscountFiltersSheet(
                         seller         = ""
                         country        = ""
                         selectedGrapes = emptySet()
+                        monosort       = false
                     },
                     modifier = Modifier.weight(1f),
                     shape    = RoundedCornerShape(12.dp),
@@ -229,6 +252,7 @@ fun DiscountFiltersSheet(
                                 seller      = seller,
                                 country     = country,
                                 grapes      = selectedGrapes.toList(),
+                                monosort    = monosort,
                                 page        = 1,
                             )
                         )
@@ -241,54 +265,6 @@ fun DiscountFiltersSheet(
                         text     = if (total > 0) "Показать $total ${pluralOffersShort(total)}" else "Применить",
                         color    = Color.White,
                         fontSize = 14.sp,
-                    )
-                }
-            }
-        }
-    }
-}
-
-// ─── Filter group ────────────────────────────────────────────────────────────
-
-@OptIn(ExperimentalLayoutApi::class)
-@Composable
-private fun FilterGroup(
-    label    : String,
-    options  : List<Pair<String, String>>,
-    selected : Set<String>,
-    onToggle : (String) -> Unit,
-) {
-    Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
-        Text(
-            text          = label,
-            fontFamily    = FontFamily.Monospace,
-            fontSize      = 11.sp,
-            fontWeight    = FontWeight.Medium,
-            letterSpacing = 0.06.em,
-            color         = Ink3,
-        )
-        FlowRow(
-            horizontalArrangement = Arrangement.spacedBy(8.dp),
-            verticalArrangement   = Arrangement.spacedBy(8.dp),
-        ) {
-            options.forEach { (key, optLabel) ->
-                val isSelected = key in selected
-                Surface(
-                    onClick  = { onToggle(key) },
-                    shape    = RoundedCornerShape(20.dp),
-                    color    = if (isSelected) TealWash else Fill,
-                    border   = BorderStroke(
-                        width = 1.dp,
-                        color = if (isSelected) MintBorder else Color.Transparent,
-                    ),
-                    modifier = Modifier.height(36.dp),
-                ) {
-                    Text(
-                        text       = optLabel,
-                        modifier   = Modifier.padding(horizontal = 14.dp, vertical = 8.dp),
-                        fontSize   = 13.5.sp,
-                        fontWeight = if (isSelected) FontWeight.Medium else FontWeight.Normal,
-                        color      = if (isSelected) Teal else Ink,
                     )
                 }
             }
