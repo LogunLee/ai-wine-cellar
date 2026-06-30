@@ -16,11 +16,11 @@ const TASK_CODE = 'cellar_ai_search'
 const LLM_TIMEOUT_MS = 45000
 const HISTORY_TURNS = 8 // сколько прошлых сообщений отдаём модели для контекста
 const KB_TOP_K = 12 // выдержек из литературы по векторному (семантическому) поиску
-const KB_LEXICAL_K = 6 // выдержек по полнотекстовому поиску (точные совпадения по блюду/термину)
-const KB_MERGED_CAP = 16 // сколько уникальных выдержек итого отдаём модели
+const KB_LEXICAL_K = 6 // выдержек по полнотекстовому поиску текста (точные совпадения по словам запроса)
+const KB_HEADING_K = 4 // выдержек по совпадению ЗАГОЛОВКА с блюдом (секции книги-гида, названные по блюду)
+const KB_MERGED_CAP = 18 // сколько уникальных выдержек итого отдаём модели
 const WINE_TOP_K = 80 // чанков описаний вин из поиска (дедуплицируем по бутылке)
-const WINE_CANDIDATES = 30 // сколько РЕЛЕВАНТНЫХ бутылок отдаём модели на выбор
-const MAX_CANDIDATES = 60 // фолбэк: последние N бутылок, если векторный поиск недоступен
+const WINE_CANDIDATES = 30 // сколько вектор-РЕЛЕВАНТНЫХ бутылок отдаём с описанием (остальные — компактно)
 const DESC_CLIP = 1200
 /** Служебный маркер: после него модель выводит индексы подобранных бутылок. Пользователю не показывается. */
 const PICKS_MARKER = '###PICKS###'
@@ -84,7 +84,22 @@ const PERSONA =
   '(а не общие рассуждения о вине) — НАЧНИ с неё и приведи ТОЧНО, какие вина или стили там названы ' +
   '(например «хорошее белое бордо», «рислинг с остаточной сладостью»), со ссылкой на источник. ' +
   'Общие соображения — только после конкретной рекомендации.\n' +
-  'Учитывай предыдущие сообщения диалога. Не выдумывай факты о бутылках или книгах, которых нет в данных.'
+  '9) Подбор бутылок и их обоснование ПОДЧИНЯЙ литературе. Если выдержки называют, какие стили подходят ' +
+  'под блюдо, а какие НЕ подходят — предлагай и хвали подходящие, а стили, которые источник прямо назвал ' +
+  'неуместными, не выноси как удачный выбор, даже если они есть в погребе (например, если книга пишет, что ' +
+  'минеральное недубовое шабли к блюду не подходит — не ставь шабли первым и не выдавай его за идеал). ' +
+  'Если в погребе есть только «неуместные» по книге стили — честно скажи об этом и предложи их как компромисс, ' +
+  'а не как лучшее сочетание. НИКОГДА не обосновывай бутылку доводами, которые противоречат процитированной ' +
+  'тобой же литературе.\n' +
+  '10) Уровень сахара различай точно. Рекомендация «остаточная сладость» у вина означает ПОЛУСУХОЕ (off-dry), ' +
+  'а НЕ полнотелое десертное (Сотерн, Токай, Айсвайн, рислинг уровня Auslese/Beerenauslese и выше): под ОСНОВНОЕ ' +
+  'блюдо десертные вина первыми не ставь и идеалом не объявляй (десерт — отдельная история к сладкому). Если стиль ' +
+  'в книге назван без указания сладости (например «белое бордо», «бургундское») — по умолчанию это СУХОЕ вино. ' +
+  'Полусухой рислинг приоритетнее десертного.\n' +
+  '11) Не предлагай несколько винтажей одного и того же вина — это не разнообразие. Считается РАЗНОЕ вино, ' +
+  'а не разные годы одного; из нескольких винтажей одной позиции бери максимум один.\n' +
+  'Учитывай ВЕСЬ предыдущий диалог и не противоречь тому, что уже сказал и на что сослался: контекст блюда/запроса ' +
+  'между репликами не меняется. Не выдумывай факты о бутылках или книгах, которых нет в данных.'
 
 /** Подгрузка винтажа/серии/страны для кандидатов — общая для обоих путей выборки. */
 const CANDIDATE_INCLUDE = {
@@ -291,15 +306,33 @@ export class SommelierService {
 
     const resolved = await this.aiRouter.resolveForUser(userId, TASK_CODE)
 
-    const { kb, wineHits } = await this.retrieve(userId, query, mode)
+    // Ретрив держит ВЕСЬ прошлый диалог, а не только текущую реплику: иначе уточнение
+    // вроде «почему petit chablis?» переретривает по самому себе и теряет исходный
+    // контекст (блюдо, прежние договорённости) — выдержки уезжают в другую тему.
+    // Склеиваем прошлые реплики пользователя (без слэш-команд) с текущим запросом —
+    // так в эмбеддинг попадает вся нить разговора, и якорная выдержка не теряется.
+    const priorUserMsgs = await this.prisma.chatMessage.findMany({
+      where: { sessionId, role: 'user', id: { not: userMsg.id } },
+      orderBy: { createdAt: 'desc' },
+      take: HISTORY_TURNS,
+      select: { content: true },
+    })
+    const priorQueries = priorUserMsgs
+      .reverse()
+      .map((m) => this.parseCommand(m.content).query)
+      .filter((q) => q.trim().length > 0)
+    const retrievalQuery = [...priorQueries, query].join('. ')
+
+    const { kb, wineHits } = await this.retrieve(userId, retrievalQuery, mode)
     // Кандидаты для выбора — РЕЛЕВАНТНЫЕ бутылки из векторного поиска (а не «последние N»),
     // иначе подходящее вино за пределами окна не попадёт в список и не будет предложено.
-    let candidates: Awaited<ReturnType<SommelierService['fetchCandidates']>> = []
+    let candidates: Awaited<ReturnType<SommelierService['buildCandidatePool']>> = []
     if (mode === 'pogreb') {
       const relevantIds = this.distinctBottleIds(wineHits, WINE_CANDIDATES)
-      candidates = relevantIds.length
-        ? await this.fetchCandidatesByIds(userId, relevantIds)
-        : await this.fetchCandidates(userId)
+      // Явно запрошенный цвет/тип — жёсткое ограничение пула (детерминированно, не промптом:
+      // через промпт это конфликтовало с правилом про отвергнутые книгой стили).
+      const allowedTypes = this.detectWineTypes(query)
+      candidates = await this.buildCandidatePool(userId, relevantIds, allowedTypes)
     }
 
     return { mode, query, history, resolved, kb, candidates, isFollowUp }
@@ -345,11 +378,18 @@ export class SommelierService {
     try {
       const qvec = await this.embeddings.embedQuery(query, voy.apiKey)
       const vec = EmbeddingService.toVectorLiteral(qvec)
-      // Гибрид: семантика (vector) ∪ точные совпадения по словам запроса (full-text).
-      // Лексические идут ПЕРВЫМИ — это точные попадания по блюду/термину, которые
-      // вектор часто пропускает (напр. конкретная рекомендация под «чёрную треску»).
-      const [kbVec, kbLex] = await Promise.all([this.vectorSearchKb(vec), this.lexicalSearchKb(query)])
-      const kb = this.mergeKb(kbLex, kbVec, KB_MERGED_CAP)
+      // Три прохода по литературе, сливаем дедупом:
+      //  • heading — секции книги-гида, ОЗАГЛАВЛЕННЫЕ по блюду (vino-i-eda «Чёрная треска»):
+      //    тут и НЕгативные рекомендации («минеральное шабли не подходит»), которые иначе теряются;
+      //  • lexical — точные совпадения по словам запроса в ТЕКСТЕ (рекомендательные таблицы: «треска → бордо/рислинг»);
+      //  • vector — семантика, добирает по смыслу.
+      // Точные попадания (heading+lexical) идут ПЕРВЫМИ, вектор — следом.
+      const [kbVec, kbLex, kbHead] = await Promise.all([
+        this.vectorSearchKb(vec),
+        this.lexicalSearchKb(query),
+        this.headingSearchKb(query),
+      ])
+      const kb = this.mergeKb([...kbHead, ...kbLex], kbVec, KB_MERGED_CAP)
       const wineHits = mode === 'pogreb' ? await this.vectorSearchWine(userId, vec) : []
       if (voy.source === 'trial') await this.aiRouter.commitVoyageTrialUse(userId).catch(() => undefined)
       return { kb, wineHits }
@@ -395,7 +435,35 @@ export class SommelierService {
     )
   }
 
-  /** Слить лексические (приоритетные) и векторные выдержки, дедуп по id, ограничить. */
+  /**
+   * Поиск по ЗАГОЛОВКУ выдержки. Книги-гиды по сочетаниям (vino-i-eda и т.п.) разбиты на секции,
+   * озаглавленные по блюду/продукту («Чёрная треска», «Треска и пикша»). Заголовок весит выше
+   * текста (setweight A против B), поэтому секция, чьё НАЗВАНИЕ совпало с блюдом запроса, всплывает
+   * наверх. Именно там лежат негативные рекомендации («минеральное шабли не подходит»), которые
+   * текстовый/векторный поиск пропускают, а без них модель срывается на отвергнутый книгой стиль.
+   */
+  private async headingSearchKb(query: string): Promise<KbRow[]> {
+    return this.prisma.$queryRawUnsafe<KbRow[]>(
+      `WITH tq AS (
+         SELECT to_tsquery('russian', replace(plainto_tsquery('russian', $1)::text, ' & ', ' | ')) AS q
+       )
+       SELECT id, book_id, printed_page, heading, text,
+              ts_rank(
+                setweight(to_tsvector('russian', coalesce(heading, '')), 'A') ||
+                setweight(to_tsvector('russian', text), 'B'),
+                tq.q
+              ) AS score
+       FROM kb_chunk, tq
+       WHERE embedding IS NOT NULL
+         AND tq.q != ''::tsquery
+         AND setweight(to_tsvector('russian', coalesce(heading, '')), 'A') @@ tq.q
+       ORDER BY score DESC
+       LIMIT ${KB_HEADING_K}`,
+      query,
+    )
+  }
+
+  /** Слить приоритетные (точные попадания) и векторные выдержки, дедуп по id, ограничить. */
   private mergeKb(primary: KbRow[], secondary: KbRow[], cap: number): KbRow[] {
     const seen = new Set<string>()
     const out: KbRow[] = []
@@ -421,6 +489,28 @@ export class SommelierService {
     )
   }
 
+  /**
+   * Явно запрошенный пользователем цвет/тип вина → жёсткое ограничение подбора. `null` — не указан.
+   * Паттерны намеренно узкие («из белого», «белое вино», «игристое»), чтобы НЕ ловить цвет блюда
+   * («красная рыба», «белое мясо», «чёрная треска»). Два разных цвета сразу → не ограничиваем.
+   */
+  private detectWineTypes(query: string): string[] | null {
+    const q = ' ' + query.toLowerCase().replace(/ё/g, 'е') + ' '
+    // ВНИМАНИЕ: \w в JS не матчит кириллицу — используем [а-я] (строка уже приведена ё→е, lowercase).
+    // Одиночное прилагательное цвета засчитываем, только если за ним НЕ идёт еда (мясо/рыба/соус…),
+    // иначе «белое мясо», «красную рыбу» ложно ограничили бы подбор. Разговорные «беленькое»/
+    // «красненькое»/«розовенькое» — только про напиток, ловим без оговорок.
+    const food = '(?!\\s*(мяс|рыб|соус|хлеб|курин|птиц|сыр|грибн|грибы|овощ))'
+    const groups: [RegExp, string][] = [
+      [/игрист[а-я]*|шампанск[а-я]*|просекко|креман[а-я]*|\bцава\b|\bкава\b/, 'SPARKLING'],
+      [new RegExp(`розовеньк[а-я]*|из\\s+розового|розов[а-я]*\\s+вин[а-я]*|\\bрозе\\b`), 'ROSE'],
+      [new RegExp(`красненьк[а-я]*|из\\s+красного|красн[а-я]*\\s+вин[а-я]*|\\bкрасн(ое|ого|ым|ые|ых)\\b${food}`), 'RED'],
+      [new RegExp(`беленьк[а-я]*|из\\s+белого|бел[а-я]*\\s+вин[а-я]*|\\bбел(ое|ого|ым|ые|ых|енькое)\\b${food}`), 'WHITE'],
+    ]
+    const hits = groups.filter(([re]) => re.test(q)).map(([, t]) => t)
+    return hits.length === 1 ? [hits[0]] : null
+  }
+
   /** Уникальные id бутылок из результатов векторного поиска (порядок = по релевантности). */
   private distinctBottleIds(wineHits: WineRow[], limit: number): string[] {
     const seen = new Set<string>()
@@ -434,7 +524,7 @@ export class SommelierService {
     return out
   }
 
-  private mapCandidate(it: CandidateItem, index: number) {
+  private mapCandidate(it: CandidateItem, index: number, withDescription = true) {
     const s = it.wineVintage?.series
     const comp = it.wineVintage?.composition as unknown
     const grapes = Array.isArray(comp)
@@ -451,41 +541,49 @@ export class SommelierService {
       vintageYear: it.wineVintage?.vintageYear ?? null,
       grapes,
       quantity: it.quantity,
-      producerDescription: clip(it.producerDescription),
+      producerDescription: withDescription ? clip(it.producerDescription) : null,
     }
   }
 
-  /** Кандидаты по конкретным id (из векторного поиска), пронумерованы в порядке релевантности. */
-  private async fetchCandidatesByIds(userId: string, ids: string[]) {
-    const items = await this.prisma.cellarItem.findMany({
-      where: { id: { in: ids }, deletedAt: null, status: 'IN_CELLAR', cellar: { ownerId: userId } },
-      include: CANDIDATE_INCLUDE,
-    })
-    const byId = new Map(items.map((it) => [it.id, it]))
-    // Восстанавливаем порядок релевантности (findMany его не гарантирует).
-    return ids
-      .map((id) => byId.get(id))
-      .filter((it): it is CandidateItem => !!it)
-      .map((it, idx) => this.mapCandidate(it, idx + 1))
-  }
-
-  /** Фолбэк: последние N бутылок (когда векторный поиск недоступен). */
-  private async fetchCandidates(userId: string) {
-    const items = await this.prisma.cellarItem.findMany({
+  /**
+   * Пул кандидатов для подбора. Векторный ранг описаний слаб для запросов «вино под блюдо»
+   * (красные забивают окно, релевантные белые вылетают за топ-N), а погреб невелик — поэтому
+   * модель должна видеть ЕГО ВЕСЬ. Два уровня: вектор-релевантные бутылки — подробно (с описанием),
+   * все остальные — компактной строкой (тип/регион/сорт, без описания). Так ни одна подходящая
+   * бутылка не выпадает только из-за слабого ранга, а токены тратятся на описания самых уместных.
+   */
+  private async buildCandidatePool(userId: string, relevantIds: string[], allowedTypes: string[] | null = null) {
+    const allRaw = await this.prisma.cellarItem.findMany({
       where: { deletedAt: null, status: 'IN_CELLAR', cellar: { ownerId: userId } },
       include: CANDIDATE_INCLUDE,
-      take: MAX_CANDIDATES,
       orderBy: { createdAt: 'desc' },
     })
-    return items.map((it, idx) => this.mapCandidate(it, idx + 1))
+    // Жёсткий фильтр по запрошенному цвету/типу (если пользователь его указал).
+    const all = allowedTypes
+      ? allRaw.filter((it) => {
+          const t = it.wineVintage?.series?.wineType
+          return t != null && allowedTypes.includes(t)
+        })
+      : allRaw
+    const byId = new Map(all.map((it) => [it.id, it]))
+    const richIds = relevantIds.filter((id) => byId.has(id))
+    const richSet = new Set(richIds)
+    const out: ReturnType<SommelierService['mapCandidate']>[] = []
+    let idx = 1
+    // Сначала вектор-релевантные (с описанием), в порядке релевантности.
+    for (const id of richIds) out.push(this.mapCandidate(byId.get(id)!, idx++, true))
+    // Затем все прочие бутылки погреба — компактно, без описания.
+    for (const it of all) if (!richSet.has(it.id)) out.push(this.mapCandidate(it, idx++, false))
+    return out
   }
+
 
   private buildTurns(
     mode: ChatMode,
     query: string,
     history: { role: string; content: string }[],
     kb: KbRow[],
-    candidates: Awaited<ReturnType<SommelierService['fetchCandidates']>>,
+    candidates: Awaited<ReturnType<SommelierService['buildCandidatePool']>>,
     isFollowUp = false,
   ): ChatTurn[] {
     const kbBlock = kb.length
@@ -513,9 +611,15 @@ export class SommelierService {
       // без повторения уже прочитанного (флаг приходит детерминированно из prepare).
       const textPart = isFollowUp
         ? `1) Текстовая часть: это ПРОДОЛЖЕНИЕ диалога — пользователь уточняет/меняет предыдущую подборку. ` +
+          `Держись ВСЕГО предыдущего диалога: исходное блюдо/запрос и уже названные тобой рекомендации остаются ` +
+          `в силе, не противоречь им и процитированной литературе. ` +
+          `ВАЖНО: если пользователь спрашивает про конкретную бутылку или стиль, которого книга НЕ называет среди ` +
+          `подходящих под это блюдо (или прямо называет неудачным) — честно скажи, что это не то, что советует ` +
+          `литература (и напомни, что книга рекомендует под это блюдо), а данную бутылку можно рассматривать лишь ` +
+          `как доступный в погребе компромисс. НИКОГДА не приписывай книге одобрение вина, которого нет в выдержках, ` +
+          `и не выдумывай источник в поддержку premise вопроса. ` +
           `НЕ повторяй прежнюю консультацию и общие рассуждения, которые уже были выше. Ответь КОРОТКО — ` +
-          `1–2 фразы по существу изменения (что и почему поменял). Можно одной фразой сослаться на источник, ` +
-          `если уместно. Не перечисляй конкретные бутылки по названию — они показаны карточками ниже.`
+          `1–2 фразы по существу. Не перечисляй конкретные бутылки по названию — они показаны карточками ниже.`
         : `1) Текстовая часть: развёрнутая консультация (несколько абзацев) — какой СТИЛЬ вина (сорта, регионы, ` +
           `характеристики) подходит под запрос и почему. ОБЯЗАТЕЛЬНО сошлись минимум на один-два источника из ` +
           `приведённой литературы в литературной форме (автор + точное название книги, без номеров страниц, без ` +
@@ -526,13 +630,19 @@ export class SommelierService {
         role: 'user',
         content:
           `Знания из литературы:\n${kbBlock}\n\n` +
-          `Бутылки в погребе пользователя (выбирай подходящие ТОЛЬКО из этого списка, по индексу #):\n${bottles}\n\n` +
+          `Бутылки в погребе пользователя — ВЕСЬ погреб (сначала самые релевантные с описанием, затем остальные ` +
+          `компактно). Выбирай подходящие ТОЛЬКО из этого списка, по индексу #; не ограничивайся первыми строками — ` +
+          `подходящая бутылка может быть и ниже:\n${bottles}\n\n` +
           `Вопрос пользователя: «${query}»\n\n` +
           `Сформируй ответ в ДВУХ частях:\n` +
           `${textPart}\n` +
           `2) Затем с НОВОЙ строки ровно одна служебная строка вида «${PICKS_MARKER}: 3, 7, 12» — индексы ` +
-          `подходящих бутылок из списка, от самой уместной (обычно 3–7, не весь погреб). После неё ничего не пиши. ` +
-          `Эту строку пользователь не увидит. Если ничего не подходит — «${PICKS_MARKER}:» без индексов.`,
+          `подходящих бутылок из списка, от самой уместной. Дай РАЗНООБРАЗНЫЙ выбор: если в погребе есть несколько ` +
+          `подходящих бутылок — предложи хотя бы 5 (до ~8), не ограничивайся 2–3; но не добавляй заведомо ` +
+          `неподходящие ради числа. Уместность определяй ПО СООТВЕТСТВИЮ стилю, который литература прямо рекомендует ` +
+          `под это блюдо: бутылки рекомендованных книгой стилей ставь ПЕРВЫМИ; стили, которые книга не называет ` +
+          `среди подходящих (а тем более называет неудачными), — в самый конец или вовсе не включай. После строки ` +
+          `ничего не пиши. Эту строку пользователь не увидит. Если ничего не подходит — «${PICKS_MARKER}:» без индексов.`,
       })
       return turns
     }
@@ -555,7 +665,7 @@ export class SommelierService {
   /** Из полного текста /погреб-ответа выделяем консультацию и индексы → карточки. */
   private parsePicks(
     full: string,
-    candidates: Awaited<ReturnType<SommelierService['fetchCandidates']>>,
+    candidates: Awaited<ReturnType<SommelierService['buildCandidatePool']>>,
   ): { answer: string; picks: ChatWinePick[] } {
     const idx = full.indexOf(PICKS_MARKER)
     const answer = (idx >= 0 ? full.slice(0, idx) : full).trim() || 'Не удалось сформировать ответ.'
@@ -563,11 +673,18 @@ export class SommelierService {
     if (idx >= 0) {
       const tail = full.slice(idx + PICKS_MARKER.length)
       const seen = new Set<number>()
+      // Схлопываем винтажи: несколько разливов одного вина (одинаковые производитель+название) —
+      // одна карточка, иначе 3 винтажа Molitor съедают слоты и подборка выглядит однообразной.
+      const seenWine = new Set<string>()
       for (const n of (tail.match(/\d+/g) ?? []).map(Number)) {
         if (seen.has(n)) continue
         seen.add(n)
         const b = candidates.find((c) => c.index === n)
-        if (b) picks.push({ cellarItemId: b.cellarItemId, title: [b.producer, b.name].filter(Boolean).join(' ') || 'Вино', reason: '' })
+        if (!b) continue
+        const wineKey = `${b.producer ?? ''}|${b.name ?? ''}`.toLowerCase()
+        if (seenWine.has(wineKey)) continue
+        seenWine.add(wineKey)
+        picks.push({ cellarItemId: b.cellarItemId, title: [b.producer, b.name].filter(Boolean).join(' ') || 'Вино', reason: '' })
       }
     }
     return { answer, picks }
