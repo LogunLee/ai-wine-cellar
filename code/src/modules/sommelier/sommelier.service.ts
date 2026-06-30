@@ -370,14 +370,25 @@ export class SommelierService {
     )
   }
 
-  /** Полнотекстовый (русский) поиск: точные совпадения по словам запроса (блюдо/термин). */
+  /**
+   * Полнотекстовый (русский) поиск: совпадения по словам запроса (блюдо/термин).
+   * Семантика OR, а не AND: `plainto_tsquery` соединяет все слова через `&`, и тогда
+   * одно лишнее слово в живой фразе (напр. «нетяжелое») обнуляет выдачу, даже если
+   * блюдо в книге описано. Берём лексемы plainto_tsquery и меняем `&`→`|` — ts_rank
+   * сам поднимает наверх чанки, где совпало больше слов (редкие «чёрн»/«треск»
+   * весомее частого «вино»). Лексемы уже очищены plainto_tsquery, повторно безопасны.
+   */
   private async lexicalSearchKb(query: string): Promise<KbRow[]> {
     return this.prisma.$queryRawUnsafe<KbRow[]>(
-      `SELECT id, book_id, printed_page, heading, text,
-              ts_rank(to_tsvector('russian', text), plainto_tsquery('russian', $1)) AS score
-       FROM kb_chunk
+      `WITH tq AS (
+         SELECT to_tsquery('russian', replace(plainto_tsquery('russian', $1)::text, ' & ', ' | ')) AS q
+       )
+       SELECT id, book_id, printed_page, heading, text,
+              ts_rank(to_tsvector('russian', text), tq.q) AS score
+       FROM kb_chunk, tq
        WHERE embedding IS NOT NULL
-         AND to_tsvector('russian', text) @@ plainto_tsquery('russian', $1)
+         AND tq.q != ''::tsquery
+         AND to_tsvector('russian', text) @@ tq.q
        ORDER BY score DESC
        LIMIT ${KB_LEXICAL_K}`,
       query,
